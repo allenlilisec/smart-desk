@@ -1,0 +1,313 @@
+openapi: 3.1.0
+info:
+  title: SmartDesk Insight API (smartdesk-insight)
+  version: 1.0.0-draft
+  description: >
+    智能分析服务内部契约（Python/FastAPI）。覆盖自动分类/定级建议、相似工单检索、统计聚合
+    （看板读模型）、通知（站内+邮件）与通知策略、分类纠偏写回。**仅给建议，不持有工单权威状态**：
+    分类/定级落库决策权在 core；insight 经事件总线异步消费 core 事件并异步写回建议。
+    **仅供内部调用**：调用方为 gateway，携带服务令牌(serviceAuth)并透传用户身份头。
+    检索接口对二期向量方案**前向兼容**（OQ-5：契约不绑定实现）。
+    领域事件信封见 #/components/schemas/DomainEvent（与 specs/SmartDesk整体大设计.md §5 一致）。
+servers:
+  - url: http://smartdesk-insight.internal/v1
+    description: 内网（不对外暴露）
+
+tags:
+  - name: classification
+  - name: similarity
+  - name: stats
+  - name: notifications
+  - name: feedback
+  - name: events
+
+security:
+  - serviceAuth: []
+
+paths:
+  /classification/predict:
+    post:
+      tags: [classification]
+      summary: 自动分类 + 定级建议（US-3.1/US-3.2，同步预测接口）
+      description: >
+        给出分类预测与置信度、优先级建议。OQ-4：一期默认"建议+人工确认"；
+        置信度 ≥ 阈值(默认 0.85，可配)时返回 auto_fill_recommended=true，由 core 决定是否自动填充。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PredictRequest' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PredictResult' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { description: 模型不可用（调用方应降级，不阻塞建单）, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /similarity/search:
+    post:
+      tags: [similarity]
+      summary: 相似工单推荐 Top-N（US-3.3）
+      description: >
+        OQ-5 一期=关键词+标题/分类相似；二期=向量检索。响应字段对实现中立
+        （score 语义不绑定算法），新增向量召回不破坏契约。计算不阻塞工单详情主加载（异步/懒加载）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SimilarityRequest' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SimilarityResult' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /stats/aggregate:
+    get:
+      tags: [stats]
+      summary: 统计聚合（US-3.4/US-6.2：按时间/分类/坐席/优先级出量、SLA 达成、时长）
+      parameters:
+        - { name: metric, in: query, required: true, schema: { type: string, enum: [volume, sla_attainment, resolution_time, backlog, reopen_rate, agent_workload, csat] } }
+        - { name: group_by, in: query, schema: { type: string, enum: [time, category, assignee, priority, status], example: category } }
+        - { name: interval, in: query, schema: { type: string, enum: [hour, day, week, month], default: day } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: category_id, in: query, schema: { type: string, format: uuid } }
+        - { name: assignee_id, in: query, schema: { type: string, format: uuid } }
+        - { name: priority, in: query, schema: { type: string, enum: [P1, P2, P3, P4] } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AggregateResult' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /stats/export:
+    get:
+      tags: [stats]
+      summary: 导出报表 CSV（US-6.4，按当前筛选）
+      parameters:
+        - { name: metric, in: query, required: true, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '200': { description: CSV, content: { text/csv: { schema: { type: string, format: binary } } } }
+
+  /notifications:
+    get:
+      tags: [notifications]
+      summary: 站内通知中心列表（未读/已读，US-4.2）
+      parameters:
+        - { name: unread_only, in: query, schema: { type: boolean, default: false } }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPage' } } } }
+    post:
+      tags: [notifications]
+      summary: 发送通知（站内/邮件；至少一次+幂等 dedupe_key；US-4.1/US-4.3）
+      description: 通常由事件消费内部触发；本接口供 gateway/core 显式发送（如系统公告）。
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/NotificationSend' } } }
+      responses:
+        '202': { description: 已受理（异步发送）, content: { application/json: { schema: { $ref: '#/components/schemas/Notification' } } } }
+
+  /notifications/{notifId}/read:
+    parameters: [{ name: notifId, in: path, required: true, schema: { type: string, format: uuid } }]
+    post:
+      tags: [notifications]
+      summary: 标记已读
+      responses: { '204': { description: OK } }
+
+  /notifications/policies:
+    get:
+      tags: [notifications]
+      summary: 通知策略查询（按角色/事件类型订阅开关，US-4.4）
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/NotificationPolicy' } } } } }
+    put:
+      tags: [notifications]
+      summary: 配置通知策略（admin，即时生效）
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/NotificationPolicy' } } } }
+      responses: { '200': { description: OK } }
+
+  /feedback/classification:
+    post:
+      tags: [feedback]
+      summary: 分类纠偏回流（US-3.1 AC3，供模型迭代，OQ-4）
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ClassificationFeedback' } } }
+      responses: { '201': { description: 已记录 } }
+
+  /healthz: { get: { tags: [events], summary: liveness, security: [], responses: { '200': { description: OK } } } }
+  /readyz:  { get: { tags: [events], summary: readiness（含读模型/总线依赖）, security: [], responses: { '200': { description: OK }, '503': { description: 未就绪 } } } }
+
+components:
+  securitySchemes:
+    serviceAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: gateway 签发的服务令牌(service-jwt, aud=insight)。用户身份经 X-User-* 头透传。
+
+  parameters:
+    IdempotencyKey: { name: Idempotency-Key, in: header, required: false, schema: { type: string } }
+    Page: { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+    PageSize: { name: page_size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+
+  responses:
+    Unauthorized: { description: 未认证, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        details: { type: array, items: { type: object } }
+        trace_id: { type: string }
+
+    PredictRequest:
+      type: object
+      required: [ticket_id, title]
+      properties:
+        ticket_id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string }
+    PredictResult:
+      type: object
+      properties:
+        ticket_id: { type: string, format: uuid }
+        category:
+          type: object
+          properties:
+            category_id: { type: string, format: uuid, nullable: true }
+            confidence: { type: number, format: float, minimum: 0, maximum: 1 }
+        priority:
+          type: object
+          properties:
+            value: { type: string, enum: [P1, P2, P3, P4] }
+            confidence: { type: number, format: float }
+        threshold: { type: number, format: float, example: 0.85 }
+        auto_fill_recommended: { type: boolean, description: confidence≥threshold 且开启自动填充时 true }
+        mode: { type: string, enum: [suggest, auto], default: suggest, description: 一期 suggest（建议+人工确认） }
+
+    SimilarityRequest:
+      type: object
+      required: [ticket_id]
+      properties:
+        ticket_id: { type: string, format: uuid }
+        title: { type: string }
+        category_id: { type: string, format: uuid, nullable: true }
+        top_n: { type: integer, default: 5, maximum: 20 }
+    SimilarityResult:
+      type: object
+      properties:
+        ticket_id: { type: string, format: uuid }
+        method: { type: string, enum: [keyword, vector, hybrid], default: keyword, description: 实现中立；二期切 vector 不破坏契约 }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              ticket_id: { type: string, format: uuid }
+              number: { type: string }
+              title: { type: string }
+              score: { type: number, format: float, description: 相似度（0-1），语义不绑定具体算法 }
+              summary: { type: string }
+              resolution_excerpt: { type: string }
+
+    AggregateResult:
+      type: object
+      properties:
+        metric: { type: string }
+        group_by: { type: string }
+        interval: { type: string }
+        series:
+          type: array
+          items:
+            type: object
+            properties:
+              key: { type: string, description: 分组键（时间桶/分类名/坐席等） }
+              value: { type: number }
+        generated_at: { type: string, format: date-time }
+
+    NotificationSend:
+      type: object
+      required: [user_id, type, channel, title]
+      properties:
+        user_id: { type: string, format: uuid }
+        ticket_id: { type: string, format: uuid, nullable: true }
+        type: { type: string, example: ticket.assigned }
+        channel: { type: string, enum: [inapp, email] }
+        title: { type: string }
+        body: { type: string }
+        dedupe_key: { type: string, description: 幂等键（至少一次送达去重） }
+    Notification:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        ticket_id: { type: string, format: uuid, nullable: true }
+        type: { type: string }
+        channel: { type: string, enum: [inapp, email] }
+        title: { type: string }
+        body: { type: string }
+        status: { type: string, enum: [pending, sent, failed, retrying] }
+        read_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+    NotificationPage:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Notification' } }
+        page: { type: integer }
+        page_size: { type: integer }
+        total: { type: integer }
+        unread_count: { type: integer }
+    NotificationPolicy:
+      type: object
+      required: [role, event_type, channel, enabled]
+      properties:
+        role: { type: string, enum: [requester, agent, lead, manager, admin] }
+        event_type: { type: string }
+        channel: { type: string, enum: [inapp, email] }
+        enabled: { type: boolean }
+
+    ClassificationFeedback:
+      type: object
+      required: [ticket_id, accepted]
+      properties:
+        ticket_id: { type: string, format: uuid }
+        predicted_category_id: { type: string, format: uuid, nullable: true }
+        confidence: { type: number, format: float }
+        accepted: { type: boolean }
+        corrected_category_id: { type: string, format: uuid, nullable: true }
+
+    DomainEvent:
+      type: object
+      description: >
+        领域事件统一信封（消费自事件总线 NATS JetStream；至少一次+幂等，event_id 去重）。
+        与 specs/SmartDesk整体大设计.md §5.2 一致。此 schema 为事件契约文档化，非 HTTP 端点。
+      required: [event_id, event_type, occurred_at, ticket_id, version]
+      properties:
+        event_id: { type: string, format: uuid }
+        event_type:
+          type: string
+          enum:
+            - ticket.created
+            - ticket.assigned
+            - ticket.reassigned
+            - ticket.status_changed
+            - ticket.commented
+            - ticket.sla_warning
+            - ticket.sla_breached
+            - ticket.resolved
+            - ticket.closed
+            - ticket.reopened
+            - ticket.merged
+            - insight.classification_suggested
+        occurred_at: { type: string, format: date-time }
+        org_id: { type: string, default: default }
+        ticket_id: { type: string, format: uuid }
+        actor_id: { type: string, format: uuid, nullable: true }
+        version: { type: integer, default: 1 }
+        payload: { type: object }

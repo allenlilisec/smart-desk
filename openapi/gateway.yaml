@@ -1,0 +1,400 @@
+openapi: 3.1.0
+info:
+  title: SmartDesk Gateway API (smartdesk-gateway)
+  version: 1.0.0-draft
+  description: >
+    对外统一入口 / 认证 BFF（TypeScript/NestJS）。**所有浏览器流量唯一入口**：完成 JWT 认证 +
+    RBAC 鉴权（收口、最小权限）后，聚合转发 core / insight，并对前端拼装视图。未经网关直达
+    后端被拒；超过速率阈值返回 429；关键请求埋点审计。身份提供方一期自建账号(JWT)，预留 OIDC 可插拔(OQ-2)。
+    后端契约见 openapi/core.yaml、openapi/insight.yaml；服务间信任见 specs/SmartDesk整体大设计.md §6/§7。
+servers:
+  - url: https://api.smartdesk.example.com/api/v1
+    description: 生产对外入口
+
+tags:
+  - name: auth
+  - name: tickets
+  - name: comments
+  - name: attachments
+  - name: insight
+  - name: notifications
+  - name: admin
+
+# 默认全局要求用户 JWT；登录/刷新等以 security: [] 显式豁免
+security:
+  - bearerAuth: []
+
+paths:
+  # ---------- 认证（无需鉴权的登录/刷新） ----------
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: 登录（US-1.1）
+      description: 有效凭证→签发 JWT(access+refresh)；无效→401 且不下发令牌，错误提示不泄露账号是否存在。
+      security: []
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/LoginRequest' } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TokenPair' } } } }
+        '401': { description: 凭证无效, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: 刷新令牌（US-1.1 AC3）
+      security: []
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [refresh_token], properties: { refresh_token: { type: string } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TokenPair' } } } }
+        '401': { description: 刷新令牌失效, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: 登出（会话失效，后续请求 401，US-1.1 AC4）
+      responses: { '204': { description: OK } }
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: 当前用户与角色
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Me' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ---------- 工单（聚合转发 core，RBAC 收口） ----------
+  /tickets:
+    post:
+      tags: [tickets]
+      summary: 提单（requester+；US-2.1）。转发 core 建单，AI 分析异步、不阻塞。
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/TicketCreate' } } }
+      responses:
+        '201': { description: 已创建, content: { application/json: { schema: { $ref: '#/components/schemas/Ticket' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    get:
+      tags: [tickets]
+      summary: 工单列表（按角色范围收敛：requester 仅自己；agent/lead 本组；manager 只读全局）
+      parameters:
+        - { name: status, in: query, schema: { type: string } }
+        - { name: priority, in: query, schema: { type: string } }
+        - { name: assignee_id, in: query, schema: { type: string, format: uuid } }
+        - { name: category_id, in: query, schema: { type: string, format: uuid } }
+        - { name: q, in: query, schema: { type: string } }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TicketPage' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /tickets/{id}:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    get:
+      tags: [tickets]
+      summary: 工单详情（聚合 core 详情 + insight 相似/建议；越权 403）
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TicketAggregate' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [tickets]
+      summary: 更新工单（agent+；manager 改工单→403）
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TicketUpdate' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Ticket' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /tickets/{id}/transitions:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    post:
+      tags: [tickets]
+      summary: 状态流转（转发 core；非法跃迁 409；幂等）
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TransitionRequest' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Ticket' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: 非法跃迁, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /tickets/{id}/assignments:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    post:
+      tags: [tickets]
+      summary: 分派/改派/转派/升级（lead+；US-2.3/US-5.1）
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AssignmentRequest' } } } }
+      responses:
+        '201': { description: OK }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /tickets/{id}/comments:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    get:
+      tags: [comments]
+      summary: 评论列表（requester 不返回 internal 备注，US-2.4 AC2）
+      parameters: [{ $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/PageSize' }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/CommentPage' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [comments]
+      summary: 新增评论/内部备注（含 @提及；internal 仅 agent/lead/manager）
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CommentCreate' } } } }
+      responses:
+        '201': { description: OK }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /tickets/{id}/attachments:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    get:
+      tags: [attachments]
+      summary: 附件列表
+      responses: { '200': { description: OK } }
+    post:
+      tags: [attachments]
+      summary: 申请上传（≤20MB+白名单，OQ-9）
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AttachmentInit' } } } }
+      responses:
+        '201': { description: 预签名上传 }
+        '413': { description: 超限 }
+  /attachments/{attId}/download:
+    parameters: [{ name: attId, in: path, required: true, schema: { type: string, format: uuid } }]
+    get:
+      tags: [attachments]
+      summary: 下载附件（鉴权；越权 403，US-2.7 AC2）
+      responses:
+        '302': { description: 重定向到短时签名 URL }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /tickets/{id}/sla:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    get: { tags: [tickets], summary: SLA 查询（US-2.5）, responses: { '200': { description: OK } } }
+  /tickets/{id}/timeline:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    get: { tags: [tickets], summary: 时间线/审计（US-2.8）, responses: { '200': { description: OK } } }
+
+  # ---------- 智能分析（聚合 insight） ----------
+  /tickets/{id}/similar:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    get:
+      tags: [insight]
+      summary: 相似工单推荐（懒加载，不阻塞详情；US-3.3）
+      responses: { '200': { description: OK } }
+  /tickets/{id}/suggestion:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    get:
+      tags: [insight]
+      summary: 分类/定级建议（一期建议态；坐席可采纳/修改，US-3.1/US-3.2）
+      responses: { '200': { description: OK } }
+    post:
+      tags: [insight]
+      summary: 采纳/纠偏分类（写回 core + 回流 insight feedback，US-3.1 AC3）
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SuggestionDecision' } } } }
+      responses: { '200': { description: OK } }
+  /stats:
+    get:
+      tags: [insight]
+      summary: 看板聚合（manager/lead 只读；US-6.2/US-6.3）
+      parameters:
+        - { name: metric, in: query, required: true, schema: { type: string } }
+        - { name: group_by, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '200': { description: OK }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /stats/export:
+    get: { tags: [insight], summary: 导出 CSV（US-6.4）, responses: { '200': { description: CSV, content: { text/csv: { schema: { type: string, format: binary } } } } } }
+
+  # ---------- 通知（聚合 insight） ----------
+  /notifications:
+    get: { tags: [notifications], summary: 站内通知列表（US-4.2）, parameters: [{ $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/PageSize' }], responses: { '200': { description: OK } } }
+  /notifications/{notifId}/read:
+    parameters: [{ name: notifId, in: path, required: true, schema: { type: string, format: uuid } }]
+    post: { tags: [notifications], summary: 标记已读, responses: { '204': { description: OK } } }
+
+  # ---------- 管理后台（admin；US-7.3） ----------
+  /admin/categories:
+    get: { tags: [admin], summary: 分类树（转发 core）, responses: { '200': { description: OK } } }
+    post:
+      tags: [admin]
+      summary: 新增分类（admin）
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses: { '201': { description: OK }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /admin/sla-policies:
+    get: { tags: [admin], summary: SLA 策略, responses: { '200': { description: OK } } }
+    put:
+      tags: [admin]
+      summary: 配置 SLA 策略（admin）
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses: { '200': { description: OK }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /admin/users:
+    get: { tags: [admin], summary: 用户/角色（admin）, responses: { '200': { description: OK } } }
+    post:
+      tags: [admin]
+      summary: 创建用户并授角色（admin）
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses: { '201': { description: OK }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /admin/notification-policies:
+    get: { tags: [admin], summary: 通知策略, responses: { '200': { description: OK } } }
+    put:
+      tags: [admin]
+      summary: 配置通知策略（admin，US-4.4）
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses: { '200': { description: OK }, '403': { $ref: '#/components/responses/Forbidden' } }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 用户 JWT（access）。claims 含 sub/roles/org/exp。gateway 校验后注入身份上下文转发后端。
+
+  parameters:
+    TicketId: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    IdempotencyKey: { name: Idempotency-Key, in: header, required: false, schema: { type: string } }
+    Page: { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+    PageSize: { name: page_size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+
+  responses:
+    BadRequest: { description: 校验失败, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Unauthorized: { description: 未认证/令牌过期, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Forbidden: { description: 越权（RBAC 拒绝，记审计）, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    NotFound: { description: 不存在, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    RateLimited: { description: 超出速率阈值（US-1.3 AC2）, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        details: { type: array, items: { type: object } }
+        trace_id: { type: string }
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string, format: password }
+    TokenPair:
+      type: object
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        token_type: { type: string, default: Bearer }
+        expires_in: { type: integer, description: access 有效秒数 }
+    Me:
+      type: object
+      properties:
+        user_id: { type: string, format: uuid }
+        username: { type: string }
+        display_name: { type: string }
+        org_id: { type: string }
+        roles: { type: array, items: { type: string, enum: [requester, agent, lead, manager, admin] } }
+
+    # 对外工单视图（与 core 对齐；gateway 不重定义业务字段语义）
+    TicketCreate:
+      type: object
+      required: [title, description]
+      properties:
+        title: { type: string, maxLength: 200 }
+        description: { type: string }
+        category_id: { type: string, format: uuid, nullable: true }
+        priority: { type: string, enum: [P1, P2, P3, P4] }
+        attachment_ids: { type: array, items: { type: string, format: uuid } }
+    TicketUpdate:
+      type: object
+      properties:
+        title: { type: string }
+        description: { type: string }
+        category_id: { type: string, format: uuid }
+        priority: { type: string, enum: [P1, P2, P3, P4] }
+    Ticket:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        number: { type: string, example: SD-2026-000123 }
+        title: { type: string }
+        status: { type: string, enum: [new, accepted, in_progress, pending_user, resolved, closed, suspended, cancelled] }
+        priority: { type: string, enum: [P1, P2, P3, P4] }
+        assignee_id: { type: string, format: uuid, nullable: true }
+        category_id: { type: string, format: uuid, nullable: true }
+        created_at: { type: string, format: date-time }
+    TicketAggregate:
+      allOf:
+        - $ref: '#/components/schemas/Ticket'
+        - type: object
+          properties:
+            description: { type: string }
+            sla: { type: object }
+            suggestion: { type: object, description: insight 分类/定级建议 }
+            similar: { type: array, items: { type: object }, description: insight 相似工单（懒加载） }
+            comments_count: { type: integer }
+    TicketPage:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Ticket' } }
+        page: { type: integer }
+        page_size: { type: integer }
+        total: { type: integer }
+
+    TransitionRequest:
+      type: object
+      required: [action]
+      properties:
+        action: { type: string, enum: [accept, start, wait_user, resolve, close, reopen, suspend, resume, cancel] }
+        reason: { type: string }
+    AssignmentRequest:
+      type: object
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [manual, auto, reassign, escalate] }
+        to_user_id: { type: string, format: uuid, nullable: true }
+        to_group_id: { type: string, format: uuid, nullable: true }
+        reason: { type: string }
+    CommentCreate:
+      type: object
+      required: [body, visibility]
+      properties:
+        body: { type: string }
+        visibility: { type: string, enum: [public, internal] }
+        mentions: { type: array, items: { type: string, format: uuid } }
+    CommentPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              body: { type: string }
+              visibility: { type: string, enum: [public, internal] }
+              author_id: { type: string, format: uuid }
+              created_at: { type: string, format: date-time }
+        page: { type: integer }
+        page_size: { type: integer }
+        total: { type: integer }
+    AttachmentInit:
+      type: object
+      required: [filename, content_type, size_bytes]
+      properties:
+        filename: { type: string }
+        content_type: { type: string }
+        size_bytes: { type: integer, maximum: 20971520 }
+    SuggestionDecision:
+      type: object
+      required: [accepted]
+      properties:
+        accepted: { type: boolean }
+        category_id: { type: string, format: uuid, nullable: true, description: 采纳/纠偏后的分类 }
+        priority: { type: string, enum: [P1, P2, P3, P4], nullable: true }
