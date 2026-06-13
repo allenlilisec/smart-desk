@@ -63,7 +63,7 @@ paths:
       tags: [stats]
       summary: 统计聚合（US-3.4/US-6.2：按时间/分类/坐席/优先级出量、SLA 达成、时长）
       parameters:
-        - { name: metric, in: query, required: true, schema: { type: string, enum: [volume, sla_attainment, resolution_time, backlog, reopen_rate, agent_workload, csat] } }
+        - { name: metric, in: query, required: true, schema: { $ref: '#/components/schemas/StatsMetric' } }
         - { name: group_by, in: query, schema: { type: string, enum: [time, category, assignee, priority, status], example: category } }
         - { name: interval, in: query, schema: { type: string, enum: [hour, day, week, month], default: day } }
         - { name: from, in: query, schema: { type: string, format: date-time } }
@@ -80,7 +80,7 @@ paths:
       tags: [stats]
       summary: 导出报表 CSV（US-6.4，按当前筛选）
       parameters:
-        - { name: metric, in: query, required: true, schema: { type: string } }
+        - { name: metric, in: query, required: true, schema: { $ref: '#/components/schemas/StatsMetric' } }
         - { name: from, in: query, schema: { type: string, format: date-time } }
         - { name: to, in: query, schema: { type: string, format: date-time } }
       responses:
@@ -216,10 +216,15 @@ components:
               summary: { type: string }
               resolution_excerpt: { type: string }
 
+    StatsMetric:
+      type: string
+      enum: [volume, sla_attainment, resolution_time, backlog, reopen_rate, agent_workload, csat]
+      description: 统计指标枚举（/stats/aggregate 与 /stats/export 共用；与 gateway StatsMetric 对齐）
+
     AggregateResult:
       type: object
       properties:
-        metric: { type: string }
+        metric: { $ref: '#/components/schemas/StatsMetric' }
         group_by: { type: string }
         interval: { type: string }
         series:

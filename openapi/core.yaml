@@ -92,11 +92,26 @@ paths:
     post:
       tags: [transitions]
       summary: 状态流转（US-2.2，状态机校验，非法跃迁 409，幂等）
-      description: >
-        合法迁移：new→accepted→in_progress↔pending_user→resolved→closed；
-        附加：suspend(挂起,可恢复)/cancel(取消,终态)/reopen(closed 后 7 天内, OQ-13)。
-        终态：closed / cancelled。pending_user 进入时 SLA 暂停，回到 in_progress 恢复。
-        每次写时间线(操作人/时间/前后状态)；非法跃迁拒绝(409)。
+      description: |
+        状态机显式映射（action → from → to），非法跃迁拒绝(409)，每次写时间线(操作人/时间/前后状态)。
+        终态：closed / cancelled。SLA：进入 pending_user 暂停、离开恢复并顺延（§整体大设计 §8）。
+
+        | action | from | to | 触发方 | 备注 |
+        |---|---|---|---|---|
+        | accept | new | accepted | 坐席 | 受理 |
+        | start | accepted, pending_user | in_progress | 坐席 | 开始/主动恢复处理（pending_user→in_progress 的手工路径） |
+        | wait_user | in_progress | pending_user | 坐席 | 等待用户，SLA 暂停 |
+        | (auto) user_reply | pending_user | in_progress | 系统 | **报单人回复时由 core 自动触发**（US-2.2 AC2），非客户端 action；SLA 恢复 |
+        | resolve | in_progress | resolved | 坐席 | 置已解决，通知报单人 |
+        | close | resolved | closed | 报单人/坐席 | 终态。pending_user 超时**仅提醒不自动关闭**（OQ-8） |
+        | reopen | closed | in_progress | 报单人 | 仅 closed 后 7 天内（OQ-13），reopen_count+1 |
+        | suspend | in_progress | suspended | 坐席/lead | 挂起（与「待用户」区分：挂起是内部暂置，不等用户） |
+        | resume | suspended | in_progress | 坐席/lead | **仅**解挂起→处理中；不承担 pending_user 的恢复 |
+        | cancel | new, accepted, in_progress, pending_user, suspended | cancelled | 坐席/lead | 终态 |
+
+        裁决（梁栋）：`resume` 语义单一化——仅 `suspended→in_progress`；
+        `pending_user→in_progress` 有两条路径：系统自动（用户回复）或坐席手工 `start`，**不复用 `resume`**，
+        避免 core/前端实现分歧。enum 不变。
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
