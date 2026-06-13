@@ -17,6 +17,12 @@ from app.services import event_processor, notifications
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
+AUTH_HEADERS = {"Authorization": "Bearer dummy-service-token"}
+
+
+def user_headers(user_id: uuid.UUID) -> dict:
+    return {**AUTH_HEADERS, "x-user-id": str(user_id)}
+
 
 @pytest_asyncio.fixture(scope="session")
 async def engine():
@@ -53,6 +59,10 @@ class TestNotificationsApi:
         assert response.status_code == 200
         assert response.json()["status"] == "ok"
 
+    async def test_send_requires_auth(self, client: AsyncClient):
+        response = await client.post("/notifications", json={"channel": "inapp"})
+        assert response.status_code == 401
+
     async def test_send_and_list_notification(self, client: AsyncClient):
         user_id = uuid.uuid4()
         send = {
@@ -62,7 +72,7 @@ class TestNotificationsApi:
             "title": "工单分派给你",
             "body": "新工单",
         }
-        response = await client.post("/notifications", json=send)
+        response = await client.post("/notifications", json=send, headers=AUTH_HEADERS)
         assert response.status_code == 202
         data = response.json()
         assert data["user_id"] == str(user_id)
@@ -70,7 +80,7 @@ class TestNotificationsApi:
 
         response = await client.get(
             "/notifications",
-            headers={"x-user-id": str(user_id)},
+            headers=user_headers(user_id),
         )
         assert response.status_code == 200
         page = response.json()
@@ -93,13 +103,13 @@ class TestNotificationsApi:
 
         response = await client.post(
             f"/notifications/{notification.id}/read",
-            headers={"x-user-id": str(user_id)},
+            headers=user_headers(user_id),
         )
         assert response.status_code == 204
 
         response = await client.get(
             "/notifications",
-            headers={"x-user-id": str(user_id)},
+            headers=user_headers(user_id),
         )
         assert response.json()["unread_count"] == 0
 
@@ -113,11 +123,11 @@ class TestNotificationsApi:
             "body": "新工单",
             "dedupe_key": "dup-key-001",
         }
-        response = await client.post("/notifications", json=send)
+        response = await client.post("/notifications", json=send, headers=AUTH_HEADERS)
         assert response.status_code == 202
         first_id = response.json()["id"]
 
-        response = await client.post("/notifications", json=send)
+        response = await client.post("/notifications", json=send, headers=AUTH_HEADERS)
         assert response.status_code == 202
         assert response.json()["id"] == first_id
 
@@ -126,10 +136,10 @@ class TestNotificationsApi:
             {"role": "agent", "event_type": "ticket.assigned", "channel": "inapp", "enabled": True},
             {"role": "requester", "event_type": "ticket.created", "channel": "inapp", "enabled": False},
         ]
-        response = await client.put("/notifications/policies", json=policies)
+        response = await client.put("/notifications/policies", json=policies, headers=AUTH_HEADERS)
         assert response.status_code == 200
 
-        response = await client.get("/notifications/policies")
+        response = await client.get("/notifications/policies", headers=AUTH_HEADERS)
         assert response.status_code == 200
         data = response.json()
         assert len(data) == 2
@@ -200,6 +210,19 @@ class TestEventProcessing:
             occurred_at=datetime.now(timezone.utc),
             ticket_id=ticket_id,
             payload={"to_user_id": str(user_id)},
+        )
+        created = await event_processor.process_domain_event(db, event)
+        await db.commit()
+        assert len(created) == 0
+
+    async def test_payload_validation_failure_is_no_op(self, db: AsyncSession):
+        """Invalid payload for the event_type should not crash or create notifications."""
+        event = schemas.DomainEvent(
+            event_id=uuid.uuid4(),
+            event_type="ticket.created",
+            occurred_at=datetime.now(timezone.utc),
+            ticket_id=uuid.uuid4(),
+            payload={"missing": "fields"},
         )
         created = await event_processor.process_domain_event(db, event)
         await db.commit()

@@ -22,3 +22,21 @@ class RoleCode(str, Enum):
     lead = "lead"
     manager = "manager"
     admin = "admin"
+
+
+class Priority(str, Enum):
+    P1 = "P1"
+    P2 = "P2"
+    P3 = "P3"
+    P4 = "P4"
+
+
+class TicketStatus(str, Enum):
+    new = "new"
+    accepted = "accepted"
+    in_progress = "in_progress"
+    pending_user = "pending_user"
+    resolved = "resolved"
+    closed = "closed"
+    suspended = "suspended"
+    cancelled = "cancelled"

@@ -7,7 +7,13 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from app.enums import NotificationChannel, NotificationStatus, RoleCode
+from app.enums import (
+    NotificationChannel,
+    NotificationStatus,
+    Priority,
+    RoleCode,
+    TicketStatus,
+)
 
 
 class Error(BaseModel):
@@ -15,6 +21,39 @@ class Error(BaseModel):
     message: str
     details: Optional[list[dict]] = None
     trace_id: Optional[str] = None
+
+
+# ---- Event payloads (P0 #1: typed per event_type) ----
+
+
+class TicketCreatedPayload(BaseModel):
+    requester_id: uuid.UUID
+    title: str
+    category_id: Optional[uuid.UUID] = None
+    priority: Optional[Priority] = None
+
+
+class TicketAssignedPayload(BaseModel):
+    to_user_id: uuid.UUID
+    from_user_id: Optional[uuid.UUID] = None
+    kind: Optional[str] = Field(default=None, examples=["manual", "auto", "reassign", "escalate"])
+    reason: Optional[str] = None
+
+
+class TicketStatusChangedPayload(BaseModel):
+    from_status: Optional[TicketStatus] = None
+    to_status: TicketStatus
+    requester_id: uuid.UUID
+
+
+class TicketResolvedPayload(BaseModel):
+    requester_id: uuid.UUID
+
+
+class TicketSlaPayload(BaseModel):
+    level: str = Field(examples=["warning", "breached"])
+    assignee_id: Optional[uuid.UUID] = None
+    due_at: Optional[datetime] = None
 
 
 class NotificationSend(BaseModel):

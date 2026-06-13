@@ -8,13 +8,16 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import schemas
+from app import auth, schemas
 from app.config import settings
 from app.db import get_db
 from app.services import notifications as notification_service
 
 logger = logging.getLogger(__name__)
-router = APIRouter(tags=["notifications"])
+router = APIRouter(
+    tags=["notifications"],
+    dependencies=[Depends(auth.verify_service_token)],
+)
 
 
 def _current_user_id(request: Request) -> uuid.UUID:

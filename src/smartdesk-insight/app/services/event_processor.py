@@ -5,7 +5,6 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,7 +18,12 @@ logger = logging.getLogger(__name__)
 async def record_event_processed(
     db: AsyncSession, event_id: uuid.UUID, event_type: str
 ) -> bool:
-    """Insert event into idempotency ledger; return False if already processed."""
+    """Insert event into idempotency ledger; return False if already processed.
+
+    This INSERT ... ON CONFLICT DO NOTHING is the single gate for idempotency.
+    Called at the start of processing so concurrent consumers cannot pass a
+    preceding SELECT and then both generate notifications (TOCTOU).
+    """
     stmt = (
         pg_insert(models.ProcessedEvent)
         .values(
@@ -37,17 +41,14 @@ async def record_event_processed(
     return inserted
 
 
-async def is_event_processed(db: AsyncSession, event_id: uuid.UUID) -> bool:
-    result = await db.execute(
-        select(models.ProcessedEvent).where(models.ProcessedEvent.event_id == event_id)
-    )
-    return result.scalar_one_or_none() is not None
-
-
 async def process_domain_event(
     db: AsyncSession, event: schemas.DomainEvent
 ) -> list[models.Notification]:
-    """Dispatch a domain event to notification generation."""
+    """Dispatch a domain event to notification generation.
+
+    Idempotency is enforced by inserting into processed_events first; if the
+    event was already processed, we return immediately without side effects.
+    """
     logger.info(
         "processing_event",
         extra={
@@ -57,43 +58,60 @@ async def process_domain_event(
         },
     )
 
-    if await is_event_processed(db, event.event_id):
+    if not await record_event_processed(db, event.event_id, event.event_type):
         return []
 
     created: list[models.Notification] = []
-    payload = event.payload or {}
 
     if event.event_type == "ticket.created":
-        created.extend(await _handle_ticket_created(db, event, payload))
+        created.extend(await _handle_ticket_created(db, event))
     elif event.event_type in ("ticket.assigned", "ticket.reassigned"):
-        created.extend(await _handle_ticket_assigned(db, event, payload))
+        created.extend(await _handle_ticket_assigned(db, event))
     elif event.event_type == "ticket.status_changed":
-        created.extend(await _handle_status_changed(db, event, payload))
+        created.extend(await _handle_status_changed(db, event))
     elif event.event_type == "ticket.resolved":
-        created.extend(await _handle_resolved(db, event, payload))
+        created.extend(await _handle_resolved(db, event))
     elif event.event_type == "ticket.sla_breached":
-        created.extend(await _handle_sla_breached(db, event, payload))
+        created.extend(await _handle_sla_breached(db, event))
     else:
         logger.debug("unhandled_event_type", extra={"event_type": event.event_type})
 
-    await record_event_processed(db, event.event_id, event.event_type)
     return created
 
 
+def _parse_payload(event: schemas.DomainEvent, model: type) -> schemas.BaseModel | None:
+    """Validate event payload against the typed schema for its event_type."""
+    payload = event.payload
+    if payload is None:
+        return None
+    try:
+        return model.model_validate(payload)
+    except Exception as exc:
+        logger.warning(
+            "payload_validation_failed",
+            extra={
+                "event_id": str(event.event_id),
+                "event_type": event.event_type,
+                "error": str(exc),
+            },
+        )
+        return None
+
+
 async def _handle_ticket_created(
-    db: AsyncSession, event: schemas.DomainEvent, payload: dict
+    db: AsyncSession, event: schemas.DomainEvent
 ) -> list[models.Notification]:
     """Notify requester that ticket was created."""
-    requester_id = payload.get("requester_id") or event.actor_id
-    if not requester_id:
+    payload = _parse_payload(event, schemas.TicketCreatedPayload)
+    if payload is None:
         return []
 
     title = f"工单已创建: #{event.ticket_id}"
-    body = payload.get("title") or "您的工单已成功提交。"
+    body = payload.title or "您的工单已成功提交。"
     return await _send_if_enabled(
         db,
         event,
-        user_id=uuid.UUID(requester_id),
+        user_id=payload.requester_id,
         role=RoleCode.requester,
         event_type="ticket.created",
         title=title,
@@ -102,19 +120,19 @@ async def _handle_ticket_created(
 
 
 async def _handle_ticket_assigned(
-    db: AsyncSession, event: schemas.DomainEvent, payload: dict
+    db: AsyncSession, event: schemas.DomainEvent
 ) -> list[models.Notification]:
     """Notify assignee about the new assignment."""
-    assignee_id = payload.get("to_user_id")
-    if not assignee_id:
+    payload = _parse_payload(event, schemas.TicketAssignedPayload)
+    if payload is None:
         return []
 
     title = f"工单分派给你: #{event.ticket_id}"
-    body = payload.get("reason") or "你有一条新的待处理工单。"
+    body = payload.reason or "你有一条新的待处理工单。"
     return await _send_if_enabled(
         db,
         event,
-        user_id=uuid.UUID(assignee_id),
+        user_id=payload.to_user_id,
         role=RoleCode.agent,
         event_type="ticket.assigned",
         title=title,
@@ -123,20 +141,19 @@ async def _handle_ticket_assigned(
 
 
 async def _handle_status_changed(
-    db: AsyncSession, event: schemas.DomainEvent, payload: dict
+    db: AsyncSession, event: schemas.DomainEvent
 ) -> list[models.Notification]:
     """Notify requester on status changes they care about."""
-    requester_id = payload.get("requester_id")
-    to_status = payload.get("to_status")
-    if not requester_id or not to_status:
+    payload = _parse_payload(event, schemas.TicketStatusChangedPayload)
+    if payload is None:
         return []
 
-    title = f"工单状态更新: {to_status}"
-    body = f"你的工单 #{event.ticket_id} 状态已变更为 {to_status}。"
+    title = f"工单状态更新: {payload.to_status.value}"
+    body = f"你的工单 #{event.ticket_id} 状态已变更为 {payload.to_status.value}。"
     return await _send_if_enabled(
         db,
         event,
-        user_id=uuid.UUID(requester_id),
+        user_id=payload.requester_id,
         role=RoleCode.requester,
         event_type="ticket.status_changed",
         title=title,
@@ -145,17 +162,17 @@ async def _handle_status_changed(
 
 
 async def _handle_resolved(
-    db: AsyncSession, event: schemas.DomainEvent, payload: dict
+    db: AsyncSession, event: schemas.DomainEvent
 ) -> list[models.Notification]:
     """Notify requester to confirm resolution."""
-    requester_id = payload.get("requester_id")
-    if not requester_id:
+    payload = _parse_payload(event, schemas.TicketResolvedPayload)
+    if payload is None:
         return []
 
     return await _send_if_enabled(
         db,
         event,
-        user_id=uuid.UUID(requester_id),
+        user_id=payload.requester_id,
         role=RoleCode.requester,
         event_type="ticket.resolved",
         title=f"工单已解决: #{event.ticket_id}",
@@ -164,24 +181,22 @@ async def _handle_resolved(
 
 
 async def _handle_sla_breached(
-    db: AsyncSession, event: schemas.DomainEvent, payload: dict
+    db: AsyncSession, event: schemas.DomainEvent
 ) -> list[models.Notification]:
     """Notify assignee/lead on SLA breach."""
-    assignee_id = payload.get("assignee_id")
-    notifications: list[models.Notification] = []
-    if assignee_id:
-        notifications.extend(
-            await _send_if_enabled(
-                db,
-                event,
-                user_id=uuid.UUID(assignee_id),
-                role=RoleCode.agent,
-                event_type="ticket.sla_breached",
-                title=f"SLA 超时: #{event.ticket_id}",
-                body="你负责的工单已触发 SLA 超时，请尽快处理。",
-            )
-        )
-    return notifications
+    payload = _parse_payload(event, schemas.TicketSlaPayload)
+    if payload is None or payload.assignee_id is None:
+        return []
+
+    return await _send_if_enabled(
+        db,
+        event,
+        user_id=payload.assignee_id,
+        role=RoleCode.agent,
+        event_type="ticket.sla_breached",
+        title=f"SLA 超时: #{event.ticket_id}",
+        body="你负责的工单已触发 SLA 超时，请尽快处理。",
+    )
 
 
 async def _send_if_enabled(

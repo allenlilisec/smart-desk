@@ -8,9 +8,9 @@ from typing import AsyncGenerator
 
 from nats import connect as nats_connect
 from nats.aio.client import Client as NatsClient
-from nats.aio.subscription import Subscription
 from nats.js import JetStreamContext
 from nats.js.api import ConsumerConfig, DeliverPolicy
+from nats.js.errors import BadRequestError
 
 from app.config import settings
 from app.db import AsyncSessionLocal
@@ -18,6 +18,14 @@ from app.schemas import DomainEvent
 from app.services.event_processor import process_domain_event
 
 logger = logging.getLogger(__name__)
+
+# NATS JetStream API error codes
+_STREAM_NAME_IN_USE = 10058
+_CONSUMER_NAME_IN_USE = 10025
+
+
+def _is_already_exists(err: BadRequestError) -> bool:
+    return err.err_code in (_STREAM_NAME_IN_USE, _CONSUMER_NAME_IN_USE)
 
 
 @asynccontextmanager
@@ -46,8 +54,15 @@ async def _ensure_stream(js: JetStreamContext) -> None:
             max_bytes=-1,
         )
         logger.info("stream_created", extra={"stream": settings.nats_stream})
-    except Exception as exc:
-        logger.debug("stream_exists_or_error", extra={"stream": settings.nats_stream, "error": str(exc)})
+    except BadRequestError as exc:
+        if _is_already_exists(exc):
+            logger.debug("stream_exists", extra={"stream": settings.nats_stream})
+            return
+        logger.error(
+            "stream_create_failed",
+            extra={"stream": settings.nats_stream, "error": str(exc)},
+        )
+        raise
 
 
 async def _ensure_consumer(js: JetStreamContext) -> None:
@@ -59,13 +74,20 @@ async def _ensure_consumer(js: JetStreamContext) -> None:
                 durable_name=settings.nats_durable,
                 deliver_policy=DeliverPolicy.ALL,
                 ack_policy="explicit",
-                max_deliver=3,
+                max_deliver=3,  # TODO: add DLQ on M4 hardened release
                 filter_subject=settings.nats_subject,
             ),
         )
         logger.info("consumer_created", extra={"consumer": settings.nats_durable})
-    except Exception as exc:
-        logger.debug("consumer_exists_or_error", extra={"consumer": settings.nats_durable, "error": str(exc)})
+    except BadRequestError as exc:
+        if _is_already_exists(exc):
+            logger.debug("consumer_exists", extra={"consumer": settings.nats_durable})
+            return
+        logger.error(
+            "consumer_create_failed",
+            extra={"consumer": settings.nats_durable, "error": str(exc)},
+        )
+        raise
 
 
 async def consume_events(stop_after: int | None = None) -> None:
