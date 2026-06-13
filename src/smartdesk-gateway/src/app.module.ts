@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
 import { RbacModule } from './rbac/rbac.module';
@@ -13,6 +14,15 @@ import configuration from './config/configuration';
     ConfigModule.forRoot({
       isGlobal: true,
       load: [configuration],
+    }),
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => [
+        {
+          ttl: config.get<number>('throttler.authTtlMs') ?? 60000,
+          limit: config.get<number>('throttler.authLimit') ?? 10,
+        },
+      ],
     }),
     RedisModule,
     AuthModule,

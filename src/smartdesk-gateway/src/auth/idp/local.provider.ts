@@ -50,12 +50,19 @@ const SEED_USERS: Array<Omit<LocalUserRecord, 'passwordHash'> & { password: stri
   },
 ];
 
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('__dummy_timing_safe_compare__', 10);
+
 @Injectable()
 export class LocalIdentityProvider implements IdentityProvider {
   private readonly usersByUsername = new Map<string, LocalUserRecord>();
   private readonly usersById = new Map<string, LocalUserRecord>();
 
   constructor(private readonly config: ConfigService) {
+    const nodeEnv = this.config.get<string>('nodeEnv') ?? 'development';
+    if (nodeEnv === 'production') {
+      return;
+    }
+
     const orgId = this.config.get<string>('org.defaultOrgId') ?? 'default';
     for (const seed of SEED_USERS) {
       const record: LocalUserRecord = {
@@ -73,11 +80,9 @@ export class LocalIdentityProvider implements IdentityProvider {
 
   async validateCredentials(username: string, password: string): Promise<LocalUserRecord | null> {
     const user = this.usersByUsername.get(username);
-    if (!user) {
-      return null;
-    }
-    const ok = await bcrypt.compare(password, user.passwordHash);
-    return ok ? user : null;
+    const passwordHash = user?.passwordHash ?? DUMMY_PASSWORD_HASH;
+    const ok = await bcrypt.compare(password, passwordHash);
+    return user && ok ? user : null;
   }
 
   async findById(userId: string): Promise<LocalUserRecord | null> {

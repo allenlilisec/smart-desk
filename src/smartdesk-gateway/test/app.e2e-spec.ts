@@ -11,6 +11,7 @@ describe('Gateway auth & RBAC (e2e)', () => {
   beforeAll(async () => {
     process.env.JWT_SECRET = 'test-secret';
     process.env.REDIS_ENABLED = 'false';
+    process.env.AUTH_THROTTLE_LIMIT = '1000';
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -67,6 +68,11 @@ describe('Gateway auth & RBAC (e2e)', () => {
     await request(app.getHttpServer())
       .get('/api/v1/auth/me')
       .set('Authorization', `Bearer ${refreshed.body.access_token}`)
+      .expect(401);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .send({ refresh_token: refreshed.body.refresh_token })
       .expect(401);
   });
 

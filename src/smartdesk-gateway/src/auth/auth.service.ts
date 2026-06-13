@@ -46,6 +46,7 @@ export class AuthService {
     try {
       payload = this.jwt.verify(refreshToken, {
         secret: this.config.get<string>('jwt.secret'),
+        algorithms: ['HS256'],
       });
     } catch {
       throw new UnauthorizedException({
@@ -58,6 +59,14 @@ export class AuthService {
       throw new UnauthorizedException({
         code: 'UNAUTHORIZED',
         message: 'Invalid refresh token',
+      });
+    }
+
+    const sessionActive = await this.redis.exists(`session:${payload.sid}`);
+    if (!sessionActive) {
+      throw new UnauthorizedException({
+        code: 'UNAUTHORIZED',
+        message: 'Session expired',
       });
     }
 
