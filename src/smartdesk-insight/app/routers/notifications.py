@@ -52,9 +52,20 @@ async def send_notification(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     db: AsyncSession = Depends(get_db),
 ):
-    """Explicit send endpoint; usually invoked internally by event consumer."""
+    """Explicit send endpoint; usually invoked internally by event consumer.
+
+    Idempotent: duplicate requests (by Idempotency-Key or dedupe_key) return
+    the existing notification record with 202.
+    """
     org_id = _org_id(request)
     dedupe = idempotency_key or data.dedupe_key
+
+    if dedupe:
+        existing = await notification_service.get_notification_by_dedupe_key(db, dedupe)
+        if existing is not None:
+            logger.info("notification_dedupe_hit", extra={"dedupe_key": dedupe})
+            return existing
+
     try:
         return await notification_service.create_notification(
             db,
@@ -70,23 +81,27 @@ async def send_notification(
             org_id=org_id,
         )
     except IntegrityError:
-        logger.warning("duplicate_notification", extra={"dedupe_key": dedupe})
-        raise HTTPException(status_code=409, detail="notification already exists")
+        # Race-condition fallback: another instance inserted the same dedupe_key.
+        logger.warning("notification_dedupe_race", extra={"dedupe_key": dedupe})
+        existing = await notification_service.get_notification_by_dedupe_key(db, dedupe)
+        if existing is not None:
+            return existing
+        raise
 
 
-@router.post("/notifications/{notif_id}/read", status_code=204)
+@router.post("/notifications/{notifId}/read", status_code=204)
 async def mark_read(
     request: Request,
-    notif_id: uuid.UUID,
+    notifId: uuid.UUID,
     db: AsyncSession = Depends(get_db),
 ):
     user_id = _current_user_id(request)
-    notification = await notification_service.get_notification(db, notif_id)
+    notification = await notification_service.get_notification(db, notifId)
     if notification is None:
         raise HTTPException(status_code=404, detail="notification not found")
     if notification.user_id != user_id:
         raise HTTPException(status_code=403, detail="not owner")
-    await notification_service.mark_read(db, notif_id)
+    await notification_service.mark_read(db, notifId)
 
 
 @router.get("/notifications/policies", response_model=list[schemas.NotificationPolicy])

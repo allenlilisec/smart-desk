@@ -8,13 +8,15 @@ from typing import Optional
 from sqlalchemy import (
     Boolean,
     DateTime,
-    Integer,
+    Enum as SQLEnum,
     String,
     Text,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from app.enums import NotificationChannel, NotificationStatus, RoleCode
 
 
 class Base(DeclarativeBase):
@@ -39,10 +41,14 @@ class Notification(Base):
         UUID(as_uuid=True), nullable=True
     )
     type: Mapped[str] = mapped_column(String(64), nullable=False)
-    channel: Mapped[str] = mapped_column(String(16), nullable=False)
+    channel: Mapped[NotificationChannel] = mapped_column(
+        SQLEnum(NotificationChannel), nullable=False
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    status: Mapped[NotificationStatus] = mapped_column(
+        SQLEnum(NotificationStatus), nullable=False, default=NotificationStatus.pending
+    )
     read_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     dedupe_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -63,9 +69,11 @@ class NotificationPolicy(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     org_id: Mapped[str] = mapped_column(String(64), nullable=False, default="default")
-    role: Mapped[str] = mapped_column(String(32), nullable=False)
+    role: Mapped[RoleCode] = mapped_column(SQLEnum(RoleCode), nullable=False)
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    channel: Mapped[str] = mapped_column(String(16), nullable=False)
+    channel: Mapped[NotificationChannel] = mapped_column(
+        SQLEnum(NotificationChannel), nullable=False
+    )
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=now_utc

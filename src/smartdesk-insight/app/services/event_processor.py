@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import models, schemas
+from app.enums import NotificationChannel, RoleCode
 from app.services import notifications as notification_service
 
 logger = logging.getLogger(__name__)
@@ -93,7 +94,7 @@ async def _handle_ticket_created(
         db,
         event,
         user_id=uuid.UUID(requester_id),
-        role="requester",
+        role=RoleCode.requester,
         event_type="ticket.created",
         title=title,
         body=body,
@@ -114,7 +115,7 @@ async def _handle_ticket_assigned(
         db,
         event,
         user_id=uuid.UUID(assignee_id),
-        role="agent",
+        role=RoleCode.agent,
         event_type="ticket.assigned",
         title=title,
         body=body,
@@ -136,7 +137,7 @@ async def _handle_status_changed(
         db,
         event,
         user_id=uuid.UUID(requester_id),
-        role="requester",
+        role=RoleCode.requester,
         event_type="ticket.status_changed",
         title=title,
         body=body,
@@ -155,7 +156,7 @@ async def _handle_resolved(
         db,
         event,
         user_id=uuid.UUID(requester_id),
-        role="requester",
+        role=RoleCode.requester,
         event_type="ticket.resolved",
         title=f"工单已解决: #{event.ticket_id}",
         body="你的工单已被标记为已解决，请确认关闭。",
@@ -174,7 +175,7 @@ async def _handle_sla_breached(
                 db,
                 event,
                 user_id=uuid.UUID(assignee_id),
-                role="agent",
+                role=RoleCode.agent,
                 event_type="ticket.sla_breached",
                 title=f"SLA 超时: #{event.ticket_id}",
                 body="你负责的工单已触发 SLA 超时，请尽快处理。",
@@ -187,11 +188,11 @@ async def _send_if_enabled(
     db: AsyncSession,
     event: schemas.DomainEvent,
     user_id: uuid.UUID,
-    role: str,
+    role: RoleCode,
     event_type: str,
     title: str,
     body: str,
-    channel: str = "inapp",
+    channel: NotificationChannel = NotificationChannel.inapp,
 ) -> list[models.Notification]:
     """Generate a notification if policy allows."""
     enabled = await notification_service.is_policy_enabled(
@@ -200,14 +201,14 @@ async def _send_if_enabled(
     if not enabled:
         return []
 
-    dedupe_key = f"{event.event_id}:{event_type}:{channel}:{user_id}"
+    dedupe_key = f"{event.event_id}:{event_type}:{channel.value}:{user_id}"
     notification = await notification_service.create_notification(
         db,
         schemas.NotificationSend(
             user_id=user_id,
             ticket_id=event.ticket_id,
             type=event_type,
-            channel=channel,
+            channel=channel.value,
             title=title,
             body=body,
             dedupe_key=dedupe_key,

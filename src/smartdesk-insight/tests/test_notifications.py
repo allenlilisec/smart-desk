@@ -103,6 +103,24 @@ class TestNotificationsApi:
         )
         assert response.json()["unread_count"] == 0
 
+    async def test_send_notification_idempotent(self, client: AsyncClient):
+        user_id = uuid.uuid4()
+        send = {
+            "user_id": str(user_id),
+            "type": "ticket.assigned",
+            "channel": "inapp",
+            "title": "工单分派给你",
+            "body": "新工单",
+            "dedupe_key": "dup-key-001",
+        }
+        response = await client.post("/notifications", json=send)
+        assert response.status_code == 202
+        first_id = response.json()["id"]
+
+        response = await client.post("/notifications", json=send)
+        assert response.status_code == 202
+        assert response.json()["id"] == first_id
+
     async def test_policies(self, client: AsyncClient):
         policies = [
             {"role": "agent", "event_type": "ticket.assigned", "channel": "inapp", "enabled": True},

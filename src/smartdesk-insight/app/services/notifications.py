@@ -11,6 +11,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import models, schemas
+from app.enums import NotificationChannel, NotificationStatus, RoleCode
 
 logger = logging.getLogger(__name__)
 
@@ -29,16 +30,12 @@ async def create_notification(
         channel=data.channel,
         title=data.title,
         body=data.body,
-        status="pending",
+        status=NotificationStatus.pending,
         dedupe_key=data.dedupe_key,
     )
     db.add(notification)
-    try:
-        await db.flush()
-        await db.refresh(notification)
-    except Exception as exc:  # pragma: no cover - caught by unique constraint
-        logger.warning("notification_dedupe_collision", extra={"dedupe_key": data.dedupe_key, "error": str(exc)})
-        raise
+    await db.flush()
+    await db.refresh(notification)
     return notification
 
 
@@ -46,6 +43,17 @@ async def get_notification(
     db: AsyncSession, notification_id: uuid.UUID
 ) -> Optional[models.Notification]:
     return await db.get(models.Notification, notification_id)
+
+
+async def get_notification_by_dedupe_key(
+    db: AsyncSession, dedupe_key: str
+) -> Optional[models.Notification]:
+    result = await db.execute(
+        select(models.Notification).where(
+            models.Notification.dedupe_key == dedupe_key
+        )
+    )
+    return result.scalar_one_or_none()
 
 
 async def list_notifications(
@@ -129,12 +137,6 @@ async def upsert_policies(
 ) -> list[models.NotificationPolicy]:
     """Replace policies for the org with the provided list."""
     await db.execute(
-        select(models.NotificationPolicy).where(
-            models.NotificationPolicy.org_id == org_id
-        )
-    )
-    # Simplest correct approach: delete existing org policies and re-insert.
-    await db.execute(
         models.NotificationPolicy.__table__.delete().where(
             models.NotificationPolicy.org_id == org_id
         )
@@ -157,9 +159,9 @@ async def upsert_policies(
 
 async def is_policy_enabled(
     db: AsyncSession,
-    role: str,
+    role: RoleCode,
     event_type: str,
-    channel: str,
+    channel: NotificationChannel,
     org_id: str = "default",
 ) -> bool:
     """Check whether a notification policy is enabled; defaults to True if absent."""

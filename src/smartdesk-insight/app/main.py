@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from app import schemas
 from app.config import settings
@@ -68,7 +69,7 @@ async def readyz():
     """Readiness probe: verify database connectivity."""
     try:
         async with engine.connect() as conn:
-            await conn.execute("SELECT 1")
+            await conn.execute(text("SELECT 1"))
         return {"status": "ok"}
     except Exception as exc:
         logger.warning("readiness_check_failed", extra={"error": str(exc)})

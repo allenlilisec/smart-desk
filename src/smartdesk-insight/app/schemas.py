@@ -7,6 +7,8 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from app.enums import NotificationChannel, NotificationStatus, RoleCode
+
 
 class Error(BaseModel):
     code: str
@@ -19,7 +21,7 @@ class NotificationSend(BaseModel):
     user_id: uuid.UUID
     ticket_id: Optional[uuid.UUID] = None
     type: str = Field(examples=["ticket.assigned"])
-    channel: str = Field(examples=["inapp", "email"])
+    channel: NotificationChannel
     title: str
     body: str = ""
     dedupe_key: Optional[str] = None
@@ -30,10 +32,10 @@ class Notification(BaseModel):
     user_id: uuid.UUID
     ticket_id: Optional[uuid.UUID] = None
     type: str
-    channel: str
+    channel: NotificationChannel
     title: str
     body: str
-    status: str = Field(examples=["pending", "sent", "failed", "retrying"])
+    status: NotificationStatus
     read_at: Optional[datetime] = None
     created_at: datetime
 
@@ -49,9 +51,9 @@ class NotificationPage(BaseModel):
 
 
 class NotificationPolicy(BaseModel):
-    role: str = Field(examples=["requester", "agent", "lead", "manager", "admin"])
+    role: RoleCode
     event_type: str
-    channel: str = Field(examples=["inapp", "email"])
+    channel: NotificationChannel
     enabled: bool
 
     model_config = {"from_attributes": True}
