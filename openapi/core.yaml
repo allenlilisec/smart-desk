@@ -8,7 +8,7 @@ info:
     用户/角色目录）。**仅供内部调用**：调用方必须为 gateway，携带服务令牌(serviceAuth)
     并透传最终用户身份头（X-User-Id / X-User-Roles / X-Org-Id / X-Request-Id）。
     鉴权已在 gateway 收口；core 仅做领域级数据可见性过滤（如内部备注、本组范围）。
-    上游：specs/SmartDesk系统设计说明书.md §3 数据模型、§5 事件、§6 服务间信任。
+    上游：specs/SmartDesk系统架构设计说明书.md §3 数据模型、§5 事件、§6 服务间信任。
 servers:
   - url: http://smartdesk-core.internal/v1
     description: 内网（不对外暴露）
@@ -94,7 +94,7 @@ paths:
       summary: 状态流转（US-2.2，状态机校验，非法跃迁 409，幂等）
       description: |
         状态机显式映射（action → from → to），非法跃迁拒绝(409)，每次写时间线(操作人/时间/前后状态)。
-        终态：closed / cancelled。SLA：进入 pending_user 暂停、离开恢复并顺延（《系统设计说明书》§8）。
+        终态：closed / cancelled。SLA：进入 pending_user 暂停、离开恢复并顺延（《系统架构设计说明书》§8）。
 
         | action | from | to | 触发方 | 备注 |
         |---|---|---|---|---|
