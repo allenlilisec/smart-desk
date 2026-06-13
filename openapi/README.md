@@ -1,7 +1,7 @@
 # SmartDesk 契约总纲（OpenAPI）
 
 > M1 整体大设计的接口唯一事实源。OpenAPI 3.1。梁栋产出、秦诺维护与一致性校验（`api-contract-check`）。
-> 设计背景与数据模型/事件/信任模型见 [`../specs/SmartDesk整体大设计.md`](../specs/SmartDesk整体大设计.md)。
+> 设计背景与数据模型/事件/信任模型见 [`../specs/SmartDesk系统设计说明书.md`](../specs/SmartDesk系统设计说明书.md)。
 >
 > **状态：v1.0-draft，待 CTO 评审 → 人类冻结。契约冻结前各开发团队不得编码。**
 

@@ -8,7 +8,7 @@ info:
     分类/定级落库决策权在 core；insight 经事件总线异步消费 core 事件并异步写回建议。
     **仅供内部调用**：调用方为 gateway，携带服务令牌(serviceAuth)并透传用户身份头。
     检索接口对二期向量方案**前向兼容**（OQ-5：契约不绑定实现）。
-    领域事件信封见 #/components/schemas/DomainEvent（与 specs/SmartDesk整体大设计.md §5 一致）。
+    领域事件信封见 #/components/schemas/DomainEvent（与 specs/SmartDesk系统设计说明书.md §5 一致）。
 servers:
   - url: http://smartdesk-insight.internal/v1
     description: 内网（不对外暴露）
@@ -291,7 +291,7 @@ components:
       type: object
       description: >
         领域事件统一信封（消费自事件总线 NATS JetStream；至少一次+幂等，event_id 去重）。
-        与 specs/SmartDesk整体大设计.md §5.2 一致。此 schema 为事件契约文档化，非 HTTP 端点。
+        与 specs/SmartDesk系统设计说明书.md §5.2 一致。此 schema 为事件契约文档化，非 HTTP 端点。
       required: [event_id, event_type, occurred_at, ticket_id, version]
       properties:
         event_id: { type: string, format: uuid }
