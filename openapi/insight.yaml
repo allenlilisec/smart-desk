@@ -315,4 +315,92 @@ components:
         ticket_id: { type: string, format: uuid }
         actor_id: { type: string, format: uuid, nullable: true }
         version: { type: integer, default: 1 }
-        payload: { type: object }
+        payload:
+          description: >
+            按 event_type 取下列之一（oneOf）。**选型以信封 event_type 为权威**，按下表映射，
+            不依赖 JSON-Schema oneOf 的运行时自动判别（event_type 在信封上、不在 payload 内，
+            标准 discriminator 无法以它为键自动选型——见 SUP-17 架构裁决⑤）。api-contract-check 按此表判定。
+
+              | event_type                                   | payload schema              |
+              |----------------------------------------------|-----------------------------|
+              | ticket.created                               | TicketCreatedPayload        |
+              | ticket.assigned / ticket.reassigned          | TicketAssignedPayload       |
+              | ticket.status_changed                        | TicketStatusChangedPayload  |
+              | ticket.resolved / ticket.closed / ticket.reopened | TicketResolvedPayload  |
+              | ticket.sla_warning / ticket.sla_breached     | TicketSlaPayload            |
+              | ticket.commented / ticket.merged / insight.classification_suggested | (M4 固化，暂为自由 object) |
+
+            **演进规则（version 语义）**：同一 version 内 payload 仅可**增量新增可选字段**（向后兼容）；
+            删除/改名/改必填属破坏性变更，必须 bump version 并经架构裁决。当前 version=1。
+          oneOf:
+            - $ref: '#/components/schemas/TicketCreatedPayload'
+            - $ref: '#/components/schemas/TicketAssignedPayload'
+            - $ref: '#/components/schemas/TicketStatusChangedPayload'
+            - $ref: '#/components/schemas/TicketResolvedPayload'
+            - $ref: '#/components/schemas/TicketSlaPayload'
+            - { type: object, description: '预留：ticket.commented/merged/insight.classification_suggested 等，M4 固化前不约束' }
+
+    # ---- 领域事件 payload（按 event_type；字段名 = §3.1 权威列名，SUP-17 架构裁决①–⑤）----
+    TicketCreatedPayload:
+      type: object
+      description: ticket.created 载荷。
+      required: [requester_id, title]
+      properties:
+        requester_id: { type: string, format: uuid }                  # tickets.requester_id
+        title:        { type: string }                                # tickets.title
+        category_id:  { type: string, format: uuid, nullable: true }  # tickets.category_id
+        priority:     { type: string, enum: [P1, P2, P3, P4] }        # tickets.priority
+
+    TicketAssignedPayload:
+      type: object
+      description: ticket.assigned / ticket.reassigned 共用。
+      required: [to_user_id]
+      properties:
+        to_user_id:   { type: string, format: uuid }                  # assignments.to_user_id
+        from_user_id: { type: string, format: uuid, nullable: true }  # assignments.from_user_id
+        kind:         { type: string, enum: [manual, auto, reassign, escalate] }  # assignments.kind
+        reason:       { type: string, nullable: true }                # assignments.reason
+
+    TicketStatusChangedPayload:
+      type: object
+      description: ticket.status_changed 载荷。
+      required: [to_status, requester_id]
+      properties:
+        from_status:  { type: string }                               # ticket_status_history.from_status
+        to_status:    { type: string }                               # ticket_status_history.to_status
+        requester_id:
+          type: string
+          format: uuid
+          description: >
+            报单人。**core 硬约束**：ticket_status_history 无此列（§3.1），core 必须从
+            tickets.requester_id 反范式化带入 payload；消费方不得为发通知回查 core
+            （事件自包含，避免重新引入 §5.1 否决的同步耦合）。
+
+    TicketResolvedPayload:
+      type: object
+      description: ticket.resolved / ticket.closed / ticket.reopened 共用。
+      required: [requester_id]
+      properties:
+        requester_id:
+          type: string
+          format: uuid
+          description: 报单人；同 status_changed，core 反范式化自 tickets.requester_id（硬约束）。
+        resolution_excerpt: { type: string, nullable: true }
+
+    TicketSlaPayload:
+      type: object
+      description: >
+        ticket.sla_warning / ticket.sla_breached 载荷。
+        due_at 取本次触发 timer 的截止时刻：core 按触发类型从 sla_timers.response_due_at
+        或 sla_timers.resolve_due_at 择一填入（§3.1，二者无单一 due_at 列）。
+      required: [level]
+      properties:
+        level:
+          type: string
+          enum: [warning, breached]
+          description: >
+            便利字段；**以信封 event_type 为权威**，取值必须一致
+            （sla_warning→warning，sla_breached→breached），不一致视为契约违规。
+        assignee_id: { type: string, format: uuid, nullable: true }  # tickets.assignee_id
+        lead_id:     { type: string, format: uuid, nullable: true }  # 升级通知收件人（§5.2）
+        due_at:      { type: string, format: date-time, description: 本次触发 timer 的截止时刻 }
