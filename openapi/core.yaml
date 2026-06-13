@@ -1,0 +1,603 @@
+openapi: 3.1.0
+info:
+  title: SmartDesk Core API (smartdesk-core)
+  version: 1.0.0-draft
+  description: >
+    工单核心服务内部契约（Go）。覆盖工单全生命周期：建单、查询/列表、状态流转、分派、
+    评论/内部备注、附件、关联/合并、SLA、时间线/审计，以及权威配置（分类树、SLA 策略、
+    用户/角色目录）。**仅供内部调用**：调用方必须为 gateway，携带服务令牌(serviceAuth)
+    并透传最终用户身份头（X-User-Id / X-User-Roles / X-Org-Id / X-Request-Id）。
+    鉴权已在 gateway 收口；core 仅做领域级数据可见性过滤（如内部备注、本组范围）。
+    上游：specs/SmartDesk系统设计说明书.md §3 数据模型、§5 事件、§6 服务间信任。
+servers:
+  - url: http://smartdesk-core.internal/v1
+    description: 内网（不对外暴露）
+
+tags:
+  - name: tickets
+  - name: transitions
+  - name: assignments
+  - name: comments
+  - name: attachments
+  - name: links
+  - name: sla
+  - name: timeline
+  - name: config
+
+security:
+  - serviceAuth: []
+
+paths:
+  /tickets:
+    post:
+      tags: [tickets]
+      summary: 建单（US-2.1）
+      description: >
+        事务内落库(status=new)→启动 SLA 计时→写时间线→发布 ticket.created 事件→返回工单号。
+        AI 分类/定级/相似为异步写回，不在本调用内（建单成功与 AI 可用性无关，满足降级）。
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TicketCreate' }
+      responses:
+        '201': { description: 已创建, content: { application/json: { schema: { $ref: '#/components/schemas/Ticket' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    get:
+      tags: [tickets]
+      summary: 工单查询/列表（过滤/分页，US-2.x/US-6.1）
+      parameters:
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/TicketStatus' } }
+        - { name: priority, in: query, schema: { $ref: '#/components/schemas/Priority' } }
+        - { name: assignee_id, in: query, schema: { type: string, format: uuid } }
+        - { name: requester_id, in: query, schema: { type: string, format: uuid } }
+        - { name: group_id, in: query, schema: { type: string, format: uuid } }
+        - { name: category_id, in: query, schema: { type: string, format: uuid } }
+        - { name: q, in: query, description: 标题/描述关键词, schema: { type: string } }
+        - { name: sla_state, in: query, schema: { type: string, enum: [ok, warning, breached] } }
+        - { name: sort, in: query, schema: { type: string, example: '-created_at' } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TicketPage' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /tickets/{id}:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    get:
+      tags: [tickets]
+      summary: 工单详情
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TicketDetail' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [tickets]
+      summary: 更新工单字段（标题/描述/分类/优先级；优先级变更触发 SLA 重算）
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/TicketUpdate' } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Ticket' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /tickets/{id}/transitions:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    post:
+      tags: [transitions]
+      summary: 状态流转（US-2.2，状态机校验，非法跃迁 409，幂等）
+      description: |
+        状态机显式映射（action → from → to），非法跃迁拒绝(409)，每次写时间线(操作人/时间/前后状态)。
+        终态：closed / cancelled。SLA：进入 pending_user 暂停、离开恢复并顺延（《系统设计说明书》§8）。
+
+        | action | from | to | 触发方 | 备注 |
+        |---|---|---|---|---|
+        | accept | new | accepted | 坐席 | 受理 |
+        | start | accepted, pending_user | in_progress | 坐席 | 开始/主动恢复处理（pending_user→in_progress 的手工路径） |
+        | wait_user | in_progress | pending_user | 坐席 | 等待用户，SLA 暂停 |
+        | (auto) user_reply | pending_user | in_progress | 系统 | **报单人回复时由 core 自动触发**（US-2.2 AC2），非客户端 action；SLA 恢复 |
+        | resolve | in_progress | resolved | 坐席 | 置已解决，通知报单人 |
+        | close | resolved | closed | 报单人/坐席 | 终态。pending_user 超时**仅提醒不自动关闭**（OQ-8） |
+        | reopen | closed | in_progress | 报单人 | 仅 closed 后 7 天内（OQ-13），reopen_count+1 |
+        | suspend | in_progress | suspended | 坐席/lead | 挂起（与「待用户」区分：挂起是内部暂置，不等用户） |
+        | resume | suspended | in_progress | 坐席/lead | **仅**解挂起→处理中；不承担 pending_user 的恢复 |
+        | cancel | new, accepted, in_progress, pending_user, suspended | cancelled | 坐席/lead | 终态 |
+
+        裁决（梁栋）：`resume` 语义单一化——仅 `suspended→in_progress`；
+        `pending_user→in_progress` 有两条路径：系统自动（用户回复）或坐席手工 `start`，**不复用 `resume`**，
+        避免 core/前端实现分歧。enum 不变。
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransitionRequest' }
+      responses:
+        '200': { description: 已流转, content: { application/json: { schema: { $ref: '#/components/schemas/Ticket' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: 非法状态跃迁/冲突, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /tickets/{id}/assignments:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    post:
+      tags: [assignments]
+      summary: 分派/改派/转派/升级（US-2.3/US-5.1）
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AssignmentRequest' } } }
+      responses:
+        '201': { description: 已分派, content: { application/json: { schema: { $ref: '#/components/schemas/Assignment' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /tickets/{id}/comments:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    get:
+      tags: [comments]
+      summary: 评论列表（内部备注按 X-User-Roles 过滤；requester 不返回 internal，US-2.4 AC2）
+      parameters: [{ $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/PageSize' }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/CommentPage' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [comments]
+      summary: 新增评论或内部备注（含 @提及，US-2.4/US-5.2）
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/CommentCreate' } } }
+      responses:
+        '201': { description: 已创建, content: { application/json: { schema: { $ref: '#/components/schemas/Comment' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /tickets/{id}/attachments:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    get:
+      tags: [attachments]
+      summary: 附件列表（元数据）
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Attachment' } } } } }
+    post:
+      tags: [attachments]
+      summary: 申请上传（返回对象存储预签名 URL；约束 ≤20MB+类型白名单，OQ-9）
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AttachmentInit' } } }
+      responses:
+        '201': { description: 预签名上传, content: { application/json: { schema: { $ref: '#/components/schemas/AttachmentUpload' } } } }
+        '413': { description: 超出大小限制, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '422': { description: 类型不在白名单, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /attachments/{attId}/download-url:
+    parameters: [{ name: attId, in: path, required: true, schema: { type: string, format: uuid } }]
+    get:
+      tags: [attachments]
+      summary: 获取下载地址（鉴权后签发短时 URL；越权 403，US-2.7 AC2）
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AttachmentUpload' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /tickets/{id}/links:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    post:
+      tags: [links]
+      summary: 关联/合并工单（US-2.6；合并：子单 merged_into 主单、状态同步、通知报单人）
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/LinkRequest' } } }
+      responses:
+        '201': { description: 已关联/合并, content: { application/json: { schema: { $ref: '#/components/schemas/TicketLink' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: 合并冲突, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /tickets/{id}/sla:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    get:
+      tags: [sla]
+      summary: SLA 计时查询（US-2.5：响应/解决 due、暂停、是否超时）
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SlaTimer' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /tickets/{id}/timeline:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    get:
+      tags: [timeline]
+      summary: 工单时间线/审计（US-2.8，正序，只读追加，普通用户不可篡改）
+      parameters: [{ $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/PageSize' }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TimelinePage' } } } }
+
+  /tickets/{id}/watchers:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    post:
+      tags: [tickets]
+      summary: 关注/取消关注（US-5.3）
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, properties: { watch: { type: boolean } }, required: [watch] } } }
+      responses:
+        '204': { description: OK }
+
+  /tickets/{id}/csat:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    post:
+      tags: [tickets]
+      summary: 解决后满意度评价 1-5 星（OQ-12/US-6.3）
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/CsatCreate' } } }
+      responses:
+        '201': { description: 已评价 }
+        '409': { description: 非可评价状态, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  # ---- 配置（admin，权威归 core）----
+  /config/categories:
+    get:
+      tags: [config]
+      summary: 分类树查询（taxonomy，OQ-4；US-7.3 AC1）
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Category' } } } } }
+    post:
+      tags: [config]
+      summary: 新增分类节点（admin）
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CategoryCreate' } } } }
+      responses:
+        '201': { description: 已创建, content: { application/json: { schema: { $ref: '#/components/schemas/Category' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /config/categories/{catId}:
+    parameters: [{ name: catId, in: path, required: true, schema: { type: string, format: uuid } }]
+    patch:
+      tags: [config]
+      summary: 修改分类节点（admin：改名/启停/排序/移动父节点）
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CategoryUpdate' } } } }
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Category' } } } } }
+    delete:
+      tags: [config]
+      summary: 删除/停用分类节点（admin）
+      responses: { '204': { description: OK }, '409': { description: 仍被引用, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } } }
+
+  /config/sla-policies:
+    get:
+      tags: [config]
+      summary: SLA 策略查询（优先级→响应/解决时限，OQ-1；US-7.3 AC2）
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SlaPolicy' } } } } }
+    put:
+      tags: [config]
+      summary: 配置 SLA 策略（admin；可配数值，不改契约形态）
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SlaPolicy' } } } }
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SlaPolicy' } } } } }
+
+  /config/users:
+    get:
+      tags: [config]
+      summary: 用户目录查询（RBAC 主数据；US-7.3 AC3）
+      parameters: [{ $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/PageSize' }]
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/UserPage' } } } } }
+    post:
+      tags: [config]
+      summary: 创建用户并授角色（admin）
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UserCreate' } } } }
+      responses: { '201': { description: 已创建, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } } }
+
+  /config/users/{userId}/roles:
+    parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
+    put:
+      tags: [config]
+      summary: 设置用户角色（admin；最小权限，一账号可兼多角色）
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, properties: { roles: { type: array, items: { $ref: '#/components/schemas/RoleCode' } } }, required: [roles] } } }
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } } }
+
+  /healthz: { get: { tags: [config], summary: liveness, security: [], responses: { '200': { description: OK } } } }
+  /readyz:  { get: { tags: [config], summary: readiness（含 DB/总线依赖）, security: [], responses: { '200': { description: OK }, '503': { description: 未就绪 } } } }
+
+components:
+  securitySchemes:
+    serviceAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: gateway 私钥签发的服务令牌(service-jwt, aud=core)；core 校验签名与受众。用户身份经 X-User-* 头透传。
+
+  parameters:
+    TicketId: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    IdempotencyKey: { name: Idempotency-Key, in: header, required: false, schema: { type: string }, description: 写操作幂等键 }
+    Page: { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+    PageSize: { name: page_size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+
+  responses:
+    BadRequest: { description: 参数校验失败, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Unauthorized: { description: 未认证（服务令牌无效）, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Forbidden: { description: 越权（领域级可见性拒绝）, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    NotFound: { description: 不存在, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Unprocessable: { description: 业务规则不满足, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, example: VALIDATION_FAILED }
+        message: { type: string }
+        details: { type: array, items: { type: object } }
+        trace_id: { type: string }
+
+    Priority: { type: string, enum: [P1, P2, P3, P4] }
+    RoleCode: { type: string, enum: [requester, agent, lead, manager, admin] }
+    TicketStatus:
+      type: string
+      enum: [new, accepted, in_progress, pending_user, resolved, closed, suspended, cancelled]
+      description: 终态 closed/cancelled（OQ-8）
+
+    TicketCreate:
+      type: object
+      required: [title, description]
+      properties:
+        title: { type: string, maxLength: 200 }
+        description: { type: string }
+        category_id: { type: string, format: uuid, nullable: true }
+        priority: { $ref: '#/components/schemas/Priority' }
+        source: { type: string, enum: [web], default: web }
+        attachment_ids: { type: array, items: { type: string, format: uuid } }
+
+    TicketUpdate:
+      type: object
+      properties:
+        title: { type: string }
+        description: { type: string }
+        category_id: { type: string, format: uuid }
+        priority: { $ref: '#/components/schemas/Priority' }
+
+    Ticket:
+      type: object
+      required: [id, org_id, number, title, status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        org_id: { type: string, default: default, description: 多租户预留（OQ-7） }
+        number: { type: string, example: SD-2026-000123 }
+        title: { type: string }
+        description: { type: string }
+        requester_id: { type: string, format: uuid }
+        assignee_id: { type: string, format: uuid, nullable: true }
+        group_id: { type: string, format: uuid, nullable: true }
+        category_id: { type: string, format: uuid, nullable: true }
+        priority: { $ref: '#/components/schemas/Priority' }
+        status: { $ref: '#/components/schemas/TicketStatus' }
+        source: { type: string }
+        reopen_count: { type: integer }
+        csat_score: { type: integer, nullable: true, minimum: 1, maximum: 5 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    TicketDetail:
+      allOf:
+        - $ref: '#/components/schemas/Ticket'
+        - type: object
+          properties:
+            sla: { $ref: '#/components/schemas/SlaTimer' }
+            suggestion: { $ref: '#/components/schemas/ClassificationSuggestion' }
+            links: { type: array, items: { $ref: '#/components/schemas/TicketLink' } }
+
+    ClassificationSuggestion:
+      type: object
+      description: insight 异步写回的分类/定级建议（OQ-4：一期建议态，≥0.85 且开启自动填充时才自动填充）
+      properties:
+        category_id: { type: string, format: uuid, nullable: true }
+        confidence: { type: number, format: float }
+        priority: { $ref: '#/components/schemas/Priority' }
+        applied: { type: boolean, description: 是否已自动填充 }
+
+    TicketPage:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Ticket' } }
+        page: { type: integer }
+        page_size: { type: integer }
+        total: { type: integer }
+
+    TransitionRequest:
+      type: object
+      required: [action]
+      properties:
+        action: { type: string, enum: [accept, start, wait_user, resolve, close, reopen, suspend, resume, cancel] }
+        reason: { type: string }
+
+    AssignmentRequest:
+      type: object
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [manual, auto, reassign, escalate] }
+        to_user_id: { type: string, format: uuid, nullable: true }
+        to_group_id: { type: string, format: uuid, nullable: true }
+        reason: { type: string }
+    Assignment:
+      allOf:
+        - $ref: '#/components/schemas/AssignmentRequest'
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            ticket_id: { type: string, format: uuid }
+            actor_id: { type: string, format: uuid }
+            created_at: { type: string, format: date-time }
+
+    CommentCreate:
+      type: object
+      required: [body, visibility]
+      properties:
+        body: { type: string }
+        visibility: { type: string, enum: [public, internal] }
+        mentions: { type: array, items: { type: string, format: uuid } }
+    Comment:
+      allOf:
+        - $ref: '#/components/schemas/CommentCreate'
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            ticket_id: { type: string, format: uuid }
+            author_id: { type: string, format: uuid }
+            created_at: { type: string, format: date-time }
+    CommentPage:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Comment' } }
+        page: { type: integer }
+        page_size: { type: integer }
+        total: { type: integer }
+
+    AttachmentInit:
+      type: object
+      required: [filename, content_type, size_bytes]
+      properties:
+        filename: { type: string }
+        content_type: { type: string }
+        size_bytes: { type: integer, maximum: 20971520, description: ≤20MB（OQ-9） }
+        comment_id: { type: string, format: uuid, nullable: true }
+    AttachmentUpload:
+      type: object
+      properties:
+        attachment_id: { type: string, format: uuid }
+        url: { type: string, format: uri, description: 预签名上传/下载 URL（短时） }
+        method: { type: string, example: PUT }
+        expires_at: { type: string, format: date-time }
+    Attachment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        ticket_id: { type: string, format: uuid }
+        filename: { type: string }
+        content_type: { type: string }
+        size_bytes: { type: integer }
+        uploader_id: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+
+    LinkRequest:
+      type: object
+      required: [linked_ticket_id, relation]
+      properties:
+        linked_ticket_id: { type: string, format: uuid }
+        relation: { type: string, enum: [related, duplicate, merged_into] }
+    TicketLink:
+      allOf:
+        - $ref: '#/components/schemas/LinkRequest'
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            ticket_id: { type: string, format: uuid }
+            created_at: { type: string, format: date-time }
+
+    SlaTimer:
+      type: object
+      properties:
+        ticket_id: { type: string, format: uuid }
+        policy_id: { type: string, format: uuid }
+        priority: { $ref: '#/components/schemas/Priority' }
+        response_due_at: { type: string, format: date-time }
+        resolve_due_at: { type: string, format: date-time }
+        response_met: { type: boolean }
+        resolve_met: { type: boolean }
+        paused: { type: boolean }
+        paused_total_seconds: { type: integer }
+        breached: { type: boolean }
+
+    TimelineEntry:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        ticket_id: { type: string, format: uuid }
+        event_type: { type: string, example: status_changed }
+        actor_id: { type: string, format: uuid, nullable: true }
+        payload: { type: object }
+        created_at: { type: string, format: date-time }
+    TimelinePage:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/TimelineEntry' } }
+        page: { type: integer }
+        page_size: { type: integer }
+        total: { type: integer }
+
+    CsatCreate:
+      type: object
+      required: [score]
+      properties:
+        score: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: string }
+
+    Category:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        parent_id: { type: string, format: uuid, nullable: true }
+        code: { type: string }
+        name: { type: string }
+        active: { type: boolean }
+        sort: { type: integer }
+    CategoryCreate:
+      type: object
+      required: [name]
+      properties:
+        parent_id: { type: string, format: uuid, nullable: true }
+        code: { type: string }
+        name: { type: string }
+        sort: { type: integer }
+    CategoryUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        active: { type: boolean }
+        sort: { type: integer }
+        parent_id: { type: string, format: uuid, nullable: true }
+
+    SlaPolicy:
+      type: object
+      required: [name, targets]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        active: { type: boolean }
+        targets:
+          type: array
+          description: 优先级→响应/解决时限（v1 基线：P1 15m/4h；P2 60m/1bd；P3 240m/3bd；P4 1bd/5bd）
+          items:
+            type: object
+            properties:
+              priority: { $ref: '#/components/schemas/Priority' }
+              response_minutes: { type: integer }
+              resolve_minutes: { type: integer }
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        email: { type: string, format: email }
+        display_name: { type: string }
+        status: { type: string, enum: [active, disabled] }
+        roles: { type: array, items: { $ref: '#/components/schemas/RoleCode' } }
+    UserCreate:
+      type: object
+      required: [username, display_name, roles]
+      properties:
+        username: { type: string }
+        email: { type: string, format: email }
+        display_name: { type: string }
+        roles: { type: array, items: { $ref: '#/components/schemas/RoleCode' } }
+    UserPage:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/User' } }
+        page: { type: integer }
+        page_size: { type: integer }
+        total: { type: integer }
