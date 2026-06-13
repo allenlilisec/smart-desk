@@ -1,5 +1,6 @@
 # build artifacts & deps
 build/
+.next/
 node_modules/
 __pycache__/
 *.pyc
