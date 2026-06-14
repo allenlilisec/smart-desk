@@ -18,6 +18,8 @@
 ## 通用约定（三份共用）
 对外 `/api/v1`、内部 `/v1`；`Error{code,message,details?,trace_id}`；HTTP 语义 400/401/403/404/409/413/422/429；分页 `page/page_size`→`{items,page,page_size,total}`；写操作 `Idempotency-Key`；时间 RFC3339 UTC、时长整数；安全 `bearerAuth`(对外 JWT) / `serviceAuth`(内部服务令牌)+`X-User-*`。
 
-## ⚠ 契约面一致性缺口（待梁栋裁决，见 plan §待裁决）
-1. **建议写回端点**：gateway 暴露 `/tickets/{id}/suggestion`(读/采纳)，但 core.yaml 未见内部写回端点——写回走"事件消费落库"还是"core 内部端点"待定。
-2. **CSAT/watchers/links 对外暴露**：core 有 `/csat`、`/watchers`、`/links`，gateway 未全部透出——一期对外聚合面是否补齐待定。
+## 契约面一致性（D1/D5 已裁定，2026-06-14 梁栋）
+1. **建议写回（D1=纯事件）**：不新增 core 同步写回端点。AI 写回经 `insight.classification_suggested` 事件 → core 幂等写 `Ticket.suggestion` 字段；gateway `GET /tickets/{id}/suggestion` 读取来源即 core 工单详情 `Ticket.suggestion`（`core.yaml` 已建模）；人工采纳/纠偏走 gateway `POST /tickets/{id}/suggestion`（同步，非 AI 写回）。缺口语义闭合，契约面无新增 core 端点。
+2. **csat（D5=一期对外补齐）**：gateway 已新增 `GET/POST /tickets/{id}/csat`，POST 映射 core `POST /tickets/{id}/csat`、GET 读 core 工单详情 csat 字段；`CsatCreate` 与 core 对齐。
+3. **watchers/links（D5=暂不对外）**：随 M3（CORE-B4 关联合并 / INS-6 通知 UX）落地时再透出，避免端点虚挂；届时按契约变更治理（梁栋审批）。
+4. **事件分区/顺序（D3）**：`ticket_id` 一致性哈希分区、单工单保序、跨工单不保证全局序、消费侧 `event_id` 幂等 —— 已写入 `insight.yaml` DomainEvent 描述。

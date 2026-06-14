@@ -38,7 +38,7 @@
 
 ## R8. 多租户预留（OQ-7）
 - **Decision**: 全业务表含 `org_id`（非空，一期固定 `default`），索引/外键带 `org_id`；一期不实现隔离逻辑。
-- **Rationale**: 避免二期推倒重来；对外契约不暴露 `org_id`（gateway 注入）——**待梁栋确认（plan §待裁决 #4）**。
+- **Rationale**: 避免二期推倒重来；对外契约不暴露 `org_id`（gateway 注入）——**已裁定 D4：不暴露**（2026-06-14 梁栋）。
 
-## 未决/待裁决汇总
-见 [plan.md §待裁决（@梁栋 契约决策）](./plan.md)：建议写回契约形态、gateway 聚合边界、事件分区键、`org_id` 暴露、CSAT/watchers/links 对外暴露一致性。
+## 契约决策 D1–D5（已裁定）
+见 [plan.md §契约决策 D1–D5](./plan.md) 与系统详设 §13：D1 建议写回=纯事件、D2 聚合边界=A、D3 事件分区/顺序入附录、D4 `org_id` 不对外、D5 csat 一期对外补齐/watchers·links 随 M3 透出。已据此更新 OpenAPI 并通过一致性校验，无悬置项。

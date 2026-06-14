@@ -190,6 +190,22 @@ paths:
       parameters: [{ $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/PageSize' }]
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TimelinePage' } } } }
+  /tickets/{id}/csat:
+    parameters: [{ $ref: '#/components/parameters/TicketId' }]
+    get:
+      tags: [tickets]
+      summary: 查询满意度评价（D5 一期对外；读取来源=core 工单详情 csat 字段，不另开 core GET 端点）
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/CsatView' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [tickets]
+      summary: 解决后满意度评价 1-5 星（OQ-12/US-6.3；映射 core POST /tickets/{id}/csat）
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CsatCreate' } } } }
+      responses:
+        '201': { description: 已评价 }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: 非可评价状态, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
 
   # ---------- 智能分析（聚合 insight） ----------
   /tickets/{id}/similar:
@@ -457,6 +473,18 @@ components:
         accepted: { type: boolean }
         category_id: { type: string, format: uuid, nullable: true, description: 采纳/纠偏后的分类 }
         priority: { type: string, enum: [P1, P2, P3, P4], nullable: true }
+    CsatCreate:
+      type: object
+      required: [score]
+      properties:
+        score: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: string }
+    CsatView:
+      type: object
+      properties:
+        score: { type: integer, nullable: true, minimum: 1, maximum: 5 }
+        comment: { type: string, nullable: true }
+        rated_at: { type: string, format: date-time, nullable: true }
 
     # ---- 对外视图 schema（gateway 不直接 $ref 内部契约文件，定义对外稳定视图）----
     AttachmentView:
