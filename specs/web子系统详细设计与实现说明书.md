@@ -15,7 +15,8 @@
 | §2 架构 | 细化 Next.js App Router 三端分区与分层 | P2 实现级派生，不改变系统边界 |
 | §4 API | 逐 path 映射到页面/组件与错误处理策略 | 契约消费方视角，便于并行开发 |
 | §5 跨服务 | 前端仅同步 REST；事件经 BFF 投影，不直连 NATS | 对齐 §9 降级语义 |
-| §7 里程碑 | WEB-1~5 拆到迭代与 M2/M3/M4 | 对齐 §12.1/§12.2 |
+| §7 里程碑 | WEB-1~5 拆到迭代与 M2/M3/M4；§7.3 验收标准引用 §10 规范基线 | 对齐 §12.1/§12.2；修订 R1（资料初审沈思） |
+| §10（新增） | 验收标准规范基线（安全/性能/可用性/代码质量） | 补 §10.3 要求的规范基线声明（修订 R1） |
 
 ---
 
@@ -30,6 +31,7 @@
 7. [任务分解与里程碑](#7-任务分解与里程碑)
 8. [依赖与阻塞](#8-依赖与阻塞)
 9. [开放事项](#9-开放事项)
+10. [验收标准规范基线（对齐 §10.3）](#10-验收标准规范基线对齐-103)
 
 ---
 
@@ -354,9 +356,9 @@ smartdesk-web/
 
 | 里程碑 | web 交付 | 验收标准（摘要） |
 |---|---|---|
-| **M2 MVP** | WEB-0/1/2 + 通知铃铛 | US-2.1 提单；US-2.2 流转；US-7.1/7.2 三端主路径；提单→关闭 E2E |
-| **M3 智能增强** | WEB-4 + 建议/相似 UI | US-3.1~3.3；US-6.2 看板 |
-| **M4 加固/发布** | WEB-3 完善 + WEB-5 + 安全 E2E | US-1.2 越权红线全过；Lighthouse P95；OQ-10 合规预留入口 |
+| **M2 MVP** | WEB-0/1/2 + 通知铃铛 | US-2.1 提单；US-2.2 流转；US-7.1/7.2 三端主路径；提单→关闭 E2E；§10.3 单测覆盖率门禁 |
+| **M3 智能增强** | WEB-4 + 建议/相似 UI | US-3.1~3.3；US-6.2 看板；§10.2 性能基线（列表 P95、懒加载超时）|
+| **M4 加固/发布** | WEB-3 完善 + WEB-5 + 安全 E2E | US-1.2 越权红线全过（§10 附录 A）；Lighthouse 性能≥80 + a11y≥90（§10.2/10.4）；CSP/HTTPS 合规（§10.1）；OQ-10 合规预留入口 |
 
 ---
 
@@ -384,6 +386,52 @@ smartdesk-web/
 | OQ-W3 | lead「本组」范围一期是否简化为全 agent 可见 | 与 gateway §4.4 列表收敛一致 | 梁栋 | 中 |
 | OQ-W4 | 通知实时性：M2 轮询间隔是否 30s | 可接受则 M2 不扩契约 | 产品 | 低 |
 | OQ-W5 | 看板图表库（ECharts vs Recharts） | 团队偏好 Recharts（React 原生） | 前端内部 | 低 |
+
+---
+
+## 10. 验收标准规范基线（对齐 §10.3）
+
+> 依据：[《AI 研发虚拟组织说明书》§10.3](AI研发虚拟组织说明书.md) 规范基线清单。  
+> 本节声明 smartdesk-web 模块各质量维度适用的**业界技术规范基线**，供测试团队（严谨/武安）据此验收，质量管理（何明）核查动作到位。
+
+### 10.1 安全基线
+
+| 规范 | web 模块适用范围 | 验收要点 |
+|---|---|---|
+| **OWASP ASVS Level 1/2**（前端适用章节） | V1 架构安全、V2 认证、V3 会话管理、V5 校验/编码/转义、V6 密码/数据安全 | XSS：所有输出经 React/Next.js 框架转义（禁用 `dangerouslySetInnerHTML`）；CSRF：JWT Bearer 不含 Cookie 时免疫，若 HttpOnly Cookie 须加 SameSite=Strict |
+| **OWASP Top 10（前端视角）** | A01 访问控制、A03 注入（DOM XSS）、A07 认证失效、A09 组件漏洞 | 路由守卫 + 按钮级 `RoleGuard` 双检；CSP 响应头（`Content-Security-Policy: default-src 'self'`）；依赖无高危 CVE（`npm audit` CI 门禁）|
+| **JWT 安全（RFC 8725）** | `access_token` 存取策略 | 不存 `localStorage`（XSS 持久化风险）；`sessionStorage` 或内存；refresh token 走 HttpOnly Cookie 或 sessionStorage（OQ-W2 待架构裁决，见 §9）|
+| **CSP / HTTPS** | 内容安全策略 | 生产环境强制 HTTPS；CSP 头拒绝 inline-script；Subresource Integrity（外部 CDN 资产）|
+
+### 10.2 性能基线
+
+| 指标 | 目标值 | 测试场景 | 对齐系统详设 |
+|---|---|---|---|
+| 首屏加载（P95，3G Fast 模拟） | ≤ 3s（LCP） | Playwright + Lighthouse CI，核心三端入口页 | 系统详设 §10 NFR |
+| 工单列表渲染（P95） | ≤ 500ms | 100 条分页数据 | 系统详设 §10 "列表/详情 P95<500ms" |
+| 相似票懒加载（P95） | ≤ 8s（含超时重试 UI） | 详情页 `/similar` 独立 GET，不阻塞主体 | D2 契约裁定；§5.2 |
+| Lighthouse 性能评分 | ≥ 80（M4 目标） | CI Lighthouse，三端代表页 | §7.3 M4 验收 |
+| Bundle 分包 | 每路由组 JS ≤ 200kB（gzip） | `next build` 分析报告 | — |
+
+### 10.3 可用性与降级基线
+
+| 场景 | 降级行为 | 验收要求 |
+|---|---|---|
+| insight 不可用 | 建单 201 正常；suggestion/similar 展示"暂不可用"，不阻塞详情 | E2E：mock insight 5xx，断言详情页主体可用 |
+| 网络离线 | 全局离线横幅；TanStack Query 自动重试 2 次（退避）；操作失败 Toast | Playwright 拦截 network，断言横幅可见 |
+| gateway 慢响应（>3s） | 骨架屏 + 超时提示；用户可手动刷新 | 测试：延迟注入 3.5s，断言骨架屏展示 |
+| 令牌刷新失败 | 清会话→`/login?expired=1`（保留 `returnUrl`）| E2E：模拟 refresh 401，断言登录页 returnUrl 参数 |
+
+### 10.4 代码质量基线
+
+| 维度 | 工具/规范 | 门禁 |
+|---|---|---|
+| 单元/组件测试覆盖率 | Vitest + Testing Library | 核心业务逻辑（auth/rbac/apiClient/状态机）分支覆盖 ≥ 80%；PR 不得降低覆盖率 |
+| E2E 测试 | Playwright | 附录 A 越权红线全过；M2 提单→关闭主路径全过 |
+| 静态分析 / Lint | ESLint（Next.js 规则集）+ TypeScript strict | CI 零严重告警（`error` 级）；`warn` 须有 suppression 注释 |
+| 无障碍（a11y） | `axe-core`（集成 Testing Library）/ Lighthouse a11y | Lighthouse a11y 评分 ≥ 90（M4）；关键交互元素有 ARIA 标签 |
+| 依赖安全 | `npm audit --audit-level=high` | CI 门禁：高危/严重漏洞不得合入（须有 workaround 或升级） |
+| OpenAPI 类型同步 | `openapi-typescript` + `api-contract-check` 技能 | gateway.yaml 变更时同步 regen `types/gateway.d.ts`；契约抽检通过 |
 
 ---
 
