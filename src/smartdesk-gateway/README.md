@@ -22,7 +22,7 @@ npm run start:dev
 ```
 
 - 健康检查：`GET /healthz`
-- API 前缀：`/api/v1`（契约见 `openapi/gateway.yaml`）
+- API 前缀：`/api/v1`（契约见 `src/openapi/gateway.yaml`）
 
 ## 种子账号（Local IdP）
 

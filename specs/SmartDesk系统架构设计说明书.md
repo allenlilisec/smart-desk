@@ -4,7 +4,7 @@
 > 编制：梁栋（首席架构 / 架构设计团队 Leader）　|　契约维护与一致性校验：秦诺
 > 上游依据：[《产品需求说明书 PRD》v1.0](SmartDesk产品需求说明书PRD.md)（含 §6 模块划分初稿、§10.1 开放问题裁决）、[《用户故事与验收标准》v1.0](SmartDesk用户故事与验收标准.md)、[《AI 研发虚拟组织说明书》v4.0](AI研发虚拟组织说明书.md)（架构红线、§10.3 规范基线）
 >
-> **本设计是 M1 阶段交付物**，覆盖：① 总体架构与服务边界；② 数据模型；③ 契约总纲（OpenAPI，见 `openapi/`）；④ 领域事件模型与事件总线选型、服务间信任与令牌传递；⑤ 可观测性基线与 NFR 落地；⑥ 模块与任务划分。**最终服务边界、数据归属与契约以本设计为准**（PRD §6 为输入）。
+> **本设计是 M1 阶段交付物**，覆盖：① 总体架构与服务边界；② 数据模型；③ 契约总纲（OpenAPI，见 `src/openapi/`）；④ 领域事件模型与事件总线选型、服务间信任与令牌传递；⑤ 可观测性基线与 NFR 落地；⑥ 模块与任务划分。**最终服务边界、数据归属与契约以本设计为准**（PRD §6 为输入）。
 >
 > **门禁**：本设计经 CTO 评审后提交人类冻结契约总纲；**契约冻结前各开发团队不得编码**（详细设计可在大设计框架内并行准备，但不得突破契约）。
 
@@ -90,7 +90,7 @@
 
 ### 2.2 服务边界与职责（最终边界，以此为准）
 
-| 服务 | 仓库 | 语言 | 职责（对外契约见 `openapi/`） | 不负责 |
+| 服务 | 仓库 | 语言 | 职责（对外契约见 `src/openapi/`） | 不负责 |
 |---|---|---|---|---|
 | **gateway** | `smartdesk-gateway` | TS/NestJS | 认证（登录/刷新/登出/me）、RBAC 收口、对前端的聚合 BFF、限流、审计埋点、身份提供方适配（自建/OIDC 预留） | 不持有工单业务逻辑；不直接连业务库（除自身会话/令牌存储） |
 | **core** | `smartdesk-core` | Go | 工单 CRUD/状态机/分派/评论备注/附件元数据/关联合并/SLA 计时/时间线审计；**权威配置**：分类树（taxonomy）、SLA 策略；用户与角色目录（账号/RBAC 主数据）；发布领域事件 | 不发通知；不做 AI 计算；不直接面向浏览器 |
@@ -181,13 +181,13 @@
 
 ## 4. 契约总纲（OpenAPI）
 
-接口唯一事实源在 `openapi/` 下三份 OpenAPI 3.1 契约（梁栋产出、秦诺维护校验）：
+接口唯一事实源在 `src/openapi/` 下三份 OpenAPI 3.1 契约（梁栋产出、秦诺维护校验）：
 
 | 文件 | 服务 | 覆盖 PRD §6"首批待定义契约" |
 |---|---|---|
-| [`openapi/gateway.yaml`](../openapi/gateway.yaml) | gateway 对外 BFF | 登录/刷新/登出/me、对前端聚合的工单/评论/附件/SLA/分派/分类建议/相似/统计/通知/admin 配置（统一鉴权+限流入口） |
-| [`openapi/core.yaml`](../openapi/core.yaml) | core 内部契约 | 建单、查询/列表（过滤/分页）、状态流转、分派、评论/备注、附件、SLA 查询、关联/合并、时间线、taxonomy/SLA 策略/用户角色配置 |
-| [`openapi/insight.yaml`](../openapi/insight.yaml) | insight 内部契约 | 分类预测、定级建议、相似推荐、统计聚合、通知发送/查询、通知策略、分类纠偏写回（事件 schema 见 §5 与 `insight.yaml#/components/schemas`） |
+| [`src/openapi/gateway.yaml`](../src/openapi/gateway.yaml) | gateway 对外 BFF | 登录/刷新/登出/me、对前端聚合的工单/评论/附件/SLA/分派/分类建议/相似/统计/通知/admin 配置（统一鉴权+限流入口） |
+| [`src/openapi/core.yaml`](../src/openapi/core.yaml) | core 内部契约 | 建单、查询/列表（过滤/分页）、状态流转、分派、评论/备注、附件、SLA 查询、关联/合并、时间线、taxonomy/SLA 策略/用户角色配置 |
+| [`src/openapi/insight.yaml`](../src/openapi/insight.yaml) | insight 内部契约 | 分类预测、定级建议、相似推荐、统计聚合、通知发送/查询、通知策略、分类纠偏写回（事件 schema 见 §5 与 `insight.yaml#/components/schemas`） |
 
 **契约通用约定**（三份共用，秦诺把守一致性）：
 - 版本：URL 前缀 `/api/v1`（gateway 对外）/ `/v1`（内部）；OpenAPI `info.version` 语义化；破坏性变更升 `v2` 并并行。
