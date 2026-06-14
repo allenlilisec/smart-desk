@@ -1,8 +1,12 @@
 # smartdesk-gateway 模块实现设计与任务分解
 
-> 版本：v1.0-draft　|　日期：2026-06-14  
+> ⚠️ **本文非系统级事实源。** 这是 P1 之前的**自下而上草稿**（早于 spec-kit 系统详设与 D1–D5 契约裁定）。
+> 系统级设计**以 [《SmartDesk 系统详细设计与实现说明书》](SmartDesk系统详细设计与实现说明书.md) + [`src/openapi/*.yaml`](../src/openapi/) 为准**；二者冲突时以事实源为准，不以本文为准。
+> 本文将于 **P2 自顶向下由系统详设派生时整体对齐回填**。本轮（SUP-43 冻结前）仅做最小消歧手术（§4.3 聚合流程对齐契约），其余实质重写留 P2。
+
+> 版本：v1.0-draft（非事实源，待 P2 对齐）　|　日期：2026-06-14  
 > 编制：关山（网关开发 Leader）  
-> 上游依据：[《SmartDesk 系统架构设计说明书》](SmartDesk系统架构设计说明书.md) §2/§6/§7/§11、[gateway OpenAPI 契约](../src/openapi/gateway.yaml)、[用户故事与验收标准](SmartDesk用户故事与验收标准.md)
+> 上游依据（事实源）：[《SmartDesk 系统详细设计与实现说明书》](SmartDesk系统详细设计与实现说明书.md)、[gateway OpenAPI 契约](../src/openapi/gateway.yaml)；背景参考：[《SmartDesk 系统架构设计说明书》](SmartDesk系统架构设计说明书.md) §2/§6/§7/§11、[用户故事与验收标准](SmartDesk用户故事与验收标准.md)
 
 ---
 
@@ -193,8 +197,9 @@ Request → GlobalJwtAuthGuard（401 未认证）
 | gateway 路由（tag） | 聚合策略 | 下游 |
 |---|---|---|
 | auth | 本地处理 | — |
-| tickets / comments / attachments / sla / timeline | 转发 + 范围收敛 | core |
-| insight（similar / suggestion） | 转发或并行拉取 | insight |
+| tickets / comments / attachments / sla / timeline / csat | 转发 + 范围收敛 | core |
+| similar（懒加载） | gateway `GET /tickets/{id}/similar` 内部调用 **`insight POST /similarity/search`** | insight |
+| suggestion | 读取来源 = **core 工单详情 `Ticket.suggestion` 字段**（D1 纯事件写回，不经 insight 端点）；采纳/纠偏 `POST /tickets/{id}/suggestion` → core 应用 + insight `/feedback/classification` | core（读）/ core+insight（采纳） |
 | stats / notifications | 转发 | insight |
 | admin | 转发（admin 角色） | core（taxonomy/SLA/用户角色）+ insight（通知策略） |
 
@@ -202,15 +207,18 @@ Request → GlobalJwtAuthGuard（401 未认证）
 
 ```
 1. RBAC: ticket:read
-2. 并行:
-   a. core GET /v1/tickets/{id}        → Ticket
-   b. insight GET /v1/tickets/{id}/similar   → SimilarList（失败降级为空）
-   c. insight GET /v1/tickets/{id}/suggestion → SuggestionView（失败降级为空）
+2. core GET /v1/tickets/{id} → Ticket
+   （含 Ticket.suggestion 字段：D1 由 insight 经 ticket.created 事件异步写回 core，详情读取即带出，无需另调 insight）
 3. 数据可见性:
    - requester: 校验 ticket.requester_id == user.sub
    - agent/lead: 本组范围（二期；一期可先全组可见）
-4. 组装 TicketAggregate → 200
+4. 组装 TicketAggregate → 200（不阻塞于相似推荐）
+
+# 相似推荐独立懒加载（D2，不在详情主聚合内、失败仅 UI 降级，US-3.3 AC3）：
+#   gateway GET /tickets/{id}/similar → 内部调用 insight POST /similarity/search（以该工单标题/分类为查询）→ SimilarList
 ```
+> 对齐说明（D1/D2，2026-06-14 梁栋裁定）：契约中**不存在** `insight GET /tickets/{id}/similar` 或 `.../suggestion`。
+> 相似走 `insight POST /similarity/search`；建议来源是 core 工单详情 `Ticket.suggestion` 字段（纯事件写回）。本节据此已对齐，实质重写仍留 P2。
 
 ### 4.4 列表范围收敛 `GET /tickets`
 
