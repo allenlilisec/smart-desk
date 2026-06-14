@@ -1,138 +1,152 @@
-# smartdesk-core 模块实现设计与任务分解说明书（M1 详细设计）
+# smartdesk-core 子系统详细设计与实现说明书
 
-> 版本：v1.0-draft　|　日期：2026-06-14
-> 编制：石磊（后端核心负责人 / 后端域 committer）
-> 上游依据：
-> - [《系统架构设计说明书》](SmartDesk系统架构设计说明书.md)（§2 服务边界、§3 数据模型、§5 事件、§6 服务间信任、§8 主流程、§11 模块划分）
-> - [`openapi/core.yaml`](../openapi/core.yaml)（core 内部契约，唯一接口事实源）
-> - [《产品需求说明书 PRD》](SmartDesk产品需求说明书PRD.md)、[《用户故事与验收标准》](SmartDesk用户故事与验收标准.md)
+> 版本：v2.0（由系统详设 v1.0 向下派生）　|　日期：2026-06-14
+> 编制：石磊（后端核心负责人 / 后端域 committer / Committer 委员会召集人）
+> **派生自（唯一事实源）**：[`SmartDesk系统详细设计与实现说明书.md`](SmartDesk系统详细设计与实现说明书.md)（v1.0 已冻结 main@6eaf281）—— §2.2 服务边界、§3 配置归属、§4 数据模型、§6 事件、§9 降级、§12 模块/里程碑、§13 D1–D5。
+> **接口唯一事实源**：[`src/openapi/core.yaml`](../src/openapi/core.yaml)（OpenAPI 3.1）。
 >
-> **定位**：本文是 smartdesk-core 服务的**实现级详细设计**，在大设计框架内细化 core 的内部架构、DB schema/迁移、与契约对齐的接口实现要点、组件划分、任务分解与里程碑、依赖关系。**不突破契约**（契约变更须经梁栋批准，秦诺校验）；契约冻结后据此并行开发。
+> **定位**：本文是 smartdesk-core 服务的实现级详细设计，由系统详设 v1.0 **自顶向下派生**（非各模块自下而上合并）。在系统详设框架内细化 core 的内部架构、本模块归属的 DB schema、逐 path 的契约实现要点、组件划分、任务分解与里程碑、依赖关系。
+> **边界纪律**：不扩权（职责严格取自系统详设 §2.2）、不破契约（接口以 core.yaml 为准，变更经梁栋批准、秦诺校验）。本文相对系统详设的任何改动均记入 §0 修订记录；与系统详设的冲突一律上交架构团队裁决，见 §9 标红开放项。
+>
+> **取代说明**：本文取代 v1.0-draft（其上游为旧《系统架构设计说明书》、自下而上口径、并自创 CORE-D 系列任务 ID）。v1.0-draft 与系统详设 v1.0 的差异已在 §0 逐条说明。
+
+---
+
+## 0. 修订记录（相对系统详设 v1.0 的偏差与理由）
+
+> 派生原则：能不改就不改。下列每条均为「实现层细化」或「事实源内部口径对齐」，**无一处突破系统详设的边界/数据模型/契约/事件语义**。涉及需架构裁决者已转入 §9 标红。
+
+| # | 相对系统详设的改动 | 性质 | 为何改 / 依据 |
+|---|---|---|---|
+| R1 | 上游事实源由旧《系统架构设计说明书》切换为**系统详设 v1.0** | 口径对齐 | 系统详设 §0 已固化层级：系统详设为「系统级详设唯一事实源」，架构说明书重叠明细以系统详设为准。本文据此重锚。 |
+| R2 | 任务 ID 全部回归系统详设 §12.1 的 **CORE-0/A1/A2/A3/B1/B2/B3/B4/C**，废止 v1.0-draft 自创的 CORE-D1/D2/D3 | 口径对齐 | v1.0-draft 把 watchers/csat、异步写回消费、集成校验另立 D 系列，与系统详设 §12.1 ID 不一致。本文把这些工作**并入既有 ID**（见 §7.1 归并表），不新增 ID。watchers/csat、写回消费、集成校验在 §12.1 的归属系统详设未显式点名 → 见 §9 O1（需架构确认）。 |
+| R3 | 引入**事务性发件箱(outbox)** 模式投递事件，新增实现表 `outbox_events`、`idempotency_keys` | 实现细化 | 系统详设 §4.2 未枚举这两张表，§6.1 明确「事件 schema 与总线实现解耦」。outbox 是为兑现「落库与发事件原子、至少一次、降级不丢」(§9) 的实现手段，不改事件信封/主题/清单，不进契约。属 core 内部实现自由度。 |
+| R4 | 状态机 action 名以 **core.yaml enum 为准**（`close`/`wait_user`/`resume` 单一化），而非系统详设 §4.3 示意图的 `confirm`/`wait`/`resume`(复用) 措辞 | 事实源内部对齐 | 系统详设 §0/§5 明定「接口唯一事实源 = OpenAPI」。core.yaml `/transitions` 已由梁栋裁决 `resume` 仅 `suspended→in_progress`、`pending_user→in_progress` 走系统 `user_reply` 或坐席 `start`。这是**示意图 vs 契约的措辞差异，非语义冲突**；建议系统详设 §4.3 示意图回填同步措辞 → 见 §9 O2（已知不一致，交架构）。 |
+| R5 | M2/M3/M4 排期严格服从系统详设 §12.2（core M2 = 0/A1/A2/B1/B3/C）；A3/B2/B4 及写回消费排在 M2 之后 | 口径对齐（含遗留疑点） | v1.0-draft 把 A3/B2/D1 放进 M2，与系统详设 §12.2 M2 清单不符。本文按事实源排期，但 SLA(A3)/附件(B2) 是否属 MVP 闭环、写回消费落哪个里程碑，系统详设 §12.2 未明 → 见 §9 O3（需架构确认）。 |
+| R6 | 明确 core 技术栈（Go 1.22+/chi/oapi-codegen/pgx+sqlc/golang-migrate/nats.go/slog/OTel） | 实现细化 | 系统详设 §2.2 仅定 core=Go。具体库为 core 团队实现决策，不影响任何对外约定。 |
 
 ---
 
 ## 目录
-
-1. [范围与设计原则](#1-范围与设计原则)
-2. [模块架构设计](#2-模块架构设计)
-3. [数据库 schema 设计](#3-数据库-schema-设计)
-4. [API 接口设计（与 core.yaml 对齐）](#4-api-接口设计与-coreyaml-对齐)
-5. [模块内部组件划分](#5-模块内部组件划分)
-6. [横切关注点（事务/幂等/事件/可观测性）](#6-横切关注点)
+1. [范围与职责边界](#1-范围与职责边界)
+2. [模块架构与分层](#2-模块架构与分层)
+3. [数据/存储（core 归属部分）](#3-数据存储core-归属部分)
+4. [API/契约对齐（逐 path 对照 core.yaml）](#4-api契约对齐逐-path-对照-coreyaml)
+5. [跨服务交互（事件/同步调用/降级）](#5-跨服务交互事件同步调用降级)
+6. [内部组件划分](#6-内部组件划分)
 7. [任务分解与里程碑](#7-任务分解与里程碑)
-8. [依赖关系说明](#8-依赖关系说明)
-9. [开放事项与风险](#9-开放事项与风险)
+8. [依赖与阻塞](#8-依赖与阻塞)
+9. [开放事项（须交架构裁决，标红）](#9-开放事项须交架构裁决标红)
 
 ---
 
-## 1. 范围与设计原则
+## 1. 范围与职责边界
 
-### 1.1 职责边界（取自架构 §2.2，最终边界）
+> 严格引用系统详设 §2.2 服务边界表与 §3 配置归属，**不得扩权**。
 
-core **负责**：工单 CRUD/状态机/分派/评论备注/附件元数据/关联合并/SLA 计时/时间线审计；**权威配置**：分类树（taxonomy）、SLA 策略、用户与角色目录（账号/RBAC 主数据）；发布领域事件；消费 insight 的分类建议异步写回。
+### 1.1 职责（系统详设 §2.2，core 行）
 
-core **不负责**：发通知（insight）；AI 计算（insight）；直接面向浏览器（仅经 gateway，监听内网）；认证凭证/会话/令牌（gateway）。
+core **负责**：工单 CRUD/状态机/分派/评论备注/附件元数据/关联合并/SLA 计时/时间线审计；**权威配置**：分类树（taxonomy）、SLA 策略、用户与角色目录；发布领域事件；消费 insight 的 `insight.classification_suggested` 异步写回（落「建议态」）。
 
-### 1.2 设计原则
+core **不负责**（系统详设 §2.2「不负责」列，红线）：① 不发通知（insight）；② 不做 AI 计算（insight）；③ 不直面浏览器（仅经 gateway，仅监听内网）；④ 不持认证凭证/会话/令牌、不二次鉴权用户身份（gateway 收口）。
 
-- **契约先行**：所有对外接口以 `openapi/core.yaml` 为准；实现用 `oapi-codegen` 生成类型/路由桩，CI 跑 `api-contract-check` 阻止漂移。
-- **领域级纵深防御**：鉴权已在 gateway 收口；core 信任 `serviceAuth`(service-jwt, aud=core) + 透传的 `X-User-*` 头，仅做**数据可见性过滤**（内部备注、本组范围、附件越权），不重做认证。
-- **事务一致 + 事件最终一致**：核心写操作（建单/流转/分派/评论）在单 PostgreSQL 事务内落库；领域事件经 **事务性发件箱（outbox）** 投递 NATS JetStream，保证「落库与发事件」原子、至少一次、可重放。
-- **降级**：NATS / insight 不可用时，core 主流程（建单/流转/评论/查询）不受影响——事件先入 outbox，由后台 relay 补投。
-- **幂等可审计**：写操作支持 `Idempotency-Key`；时间线只追加、不暴露 update/delete 给非系统角色。
-- **多租户预留（OQ-7）**：全表 `org_id` 非空（一期固定 `default`），索引/外键带 `org_id`；一期不实现隔离逻辑。
+**关键边界规则**（系统详设 §2.2 末）：后端仅监听内网、外部不可达；insight 永远「只建议」，工单权威状态只在 core。
 
-### 1.3 技术选型
+### 1.2 配置数据归属（系统详设 §3，core 持有部分）
 
-| 关注点 | 选型 | 理由 |
+| 配置 | 归属 | core 实现位置 |
 |---|---|---|
-| 语言/运行时 | Go 1.22+ | 架构红线指定 core 用 Go；并发与内网服务契合 |
-| HTTP 路由 | `chi` v5 | 轻量、`net/http` 原生中间件链、契约桩可挂载 |
-| 契约代码生成 | `oapi-codegen`（types + chi-server + spec embed） | 与 core.yaml 强绑定，编译期保证契约一致 |
-| DB 驱动/访问 | `pgx` v5 + `sqlc` 生成查询 | 类型安全、无 ORM 魔法、可读 SQL |
-| 迁移 | `golang-migrate`（`migrations/*.sql`，up/down 成对） | 与 `db-migration` 技能一致，可重复执行 |
-| 事件总线 | NATS JetStream（`nats.go`） | 架构 §5.1 选定；Stream `SMARTDESK_EVENTS` |
-| 配置 | 环境变量 + `envconfig`，`.env` 本地 | 12-factor |
-| 日志 | `slog`（结构化 JSON，注入 trace_id/request_id/org_id/actor_id） | 架构 §9 三支柱 |
-| 指标/追踪 | Prometheus `/metrics` + OpenTelemetry | 架构 §9 |
-| 主键 | UUID v7（应用层生成，时序友好） | 架构 §3.2 |
-| 测试 | `testify` + `testcontainers-go`(PG/NATS) | 集成测试真实依赖 |
+| 分类体系 taxonomy 树 | **core**（强一致，驱动建单/分派/校验） | `config` 包 + `categories` 表 |
+| SLA 策略（优先级→时限，可配/可暂停语义） | **core**（策略与执行同归，SLA 计时在 core） | `config`+`sla` 包 + `sla_policies`/`sla_policy_targets` |
+| 用户/角色/权限**主数据**（角色目录） | **core**（业务主数据）；凭证/会话/令牌在 gateway | `config` 包 + `users`/`roles`/`user_roles`；core 仅存 `credential_ref` |
+| 通知策略 | **insight**（不归 core） | —（core 不实现） |
+
+### 1.3 设计原则（贯穿，对齐系统详设 §1 + 宪法）
+
+- **契约先行**：对外接口以 core.yaml 为准；`oapi-codegen` 生成类型/路由桩，CI 跑 `api-contract-check` 阻止漂移。
+- **领域级纵深防御**：鉴权在 gateway 收口；core 信任 `serviceAuth`(service-jwt, aud=core) + 透传 `X-User-*`，**仅做数据可见性过滤**（内部备注、本组范围、附件越权），不重做认证（系统详设 §7/§8）。
+- **事务一致 + 事件最终一致**：核心写在单 PG 事务内落「业务表 + timeline + outbox」；事件经事务性发件箱投递 NATS（R3），保证落库与发事件原子、至少一次、可重放、降级不丢。
+- **幂等可审计**：写操作支持 `Idempotency-Key`；时间线只追加、不暴露 update/delete。
+- **多租户预留（OQ-7）**：全表 `org_id NOT NULL DEFAULT 'default'`，索引/外键带 `org_id`；一期不实现隔离逻辑（系统详设 §4.1）。
 
 ---
 
-## 2. 模块架构设计
+## 2. 模块架构与分层
 
-### 2.1 分层（六边形 / 端口-适配器）
+### 2.1 六边形（端口-适配器）分层
 
 ```
-                ┌──────────────────────────── 入站适配器 (inbound) ────────────────────────────┐
-   gateway ──▶  │  HTTP Server (chi)  │  中间件链  │  事件消费者 (insight.classification_suggested) │
-   (svc-jwt +   │  · oapi handler 桩  │  recover / requestID / serviceAuth / userCtx / metrics    │
-    X-User-*)   └─────────────┬───────────────────────────────────────┬─────────────────────────┘
-                              ▼                                         ▼
-                ┌──────────────────────── 应用/领域层 (core domain) ────────────────────────────┐
-                │  TicketService · TransitionService(状态机) · AssignmentService · CommentService │
-                │  AttachmentService · LinkService · SlaEngine · TimelineService · ConfigService  │
-                │  领域不可变规则：状态机表 / SLA 计算 / 可见性过滤 / 校验                          │
-                └─────────────┬───────────────────────────────────────┬─────────────────────────┘
-                              ▼ (ports: Repository / EventPublisher / ObjectStore / Clock)
-                ┌──────────────────────── 出站适配器 (outbound) ───────────────────────────────┐
-                │  PG Repository (pgx+sqlc)  │  Outbox→NATS Relay  │  S3/MinIO 预签名  │  Clock   │
-                └──────────────┬─────────────────────┬────────────────────┬─────────────────────┘
-                               ▼                     ▼                    ▼
-                         PostgreSQL            NATS JetStream         对象存储(S3/MinIO)
+            ┌──────────────────────── 入站适配器 (inbound) ─────────────────────────┐
+ gateway ─▶ │ HTTP Server(chi) · oapi handler 桩 │ 事件消费者(insight.classification_suggested) │
+ (svc-jwt + │ 中间件链: recover/requestID/serviceAuth/userCtx/metrics                   │
+  X-User-*) └───────────────┬──────────────────────────────────┬────────────────────┘
+                            ▼                                    ▼
+            ┌──────────────────── 应用/领域层 (core domain) ────────────────────────┐
+            │ TicketService · TransitionService(状态机) · AssignmentService           │
+            │ CommentService · AttachmentService · LinkService · SlaEngine            │
+            │ TimelineService · ConfigService                                         │
+            │ 领域不可变规则：状态机表 / SLA 计算 / 可见性过滤 / 校验                   │
+            └───────────────┬──────────────────────────────────┬────────────────────┘
+                            ▼ ports: Repository/EventPublisher/ObjectStore/Clock
+            ┌──────────────────── 出站适配器 (outbound) ───────────────────────────┐
+            │ PG Repository(pgx+sqlc) │ Outbox→NATS Relay │ S3/MinIO 预签名 │ Clock    │
+            └──────────────┬─────────────────┬──────────────────┬────────────────────┘
+                           ▼                 ▼                  ▼
+                      PostgreSQL        NATS JetStream      对象存储(S3/MinIO)
 ```
 
-**依赖方向**：入站 → 应用/领域 → 出站端口（接口），适配器实现端口。领域层不 import 框架/驱动；便于单测（mock 端口）。
+依赖方向：入站 → 应用/领域 → 出站端口（接口），适配器实现端口。领域层不 import 框架/驱动，便于单测 mock 端口。
 
-### 2.2 请求处理链（以「建单」为例，落地架构 §8）
+### 2.2 建单请求处理链（落地系统详设 §9 主流程 step 2）
 
 ```
 POST /v1/tickets  (Idempotency-Key)
- 1. recover → requestID(透传 X-Request-Id) → serviceAuth(校验 service-jwt 签名+aud=core)
- 2. userCtx 中间件：解析 X-User-Id / X-User-Roles / X-Org-Id 注入 context
+ 1. recover → requestID(透传 X-Request-Id) → serviceAuth(校验 service-jwt 签名 + aud=core)
+ 2. userCtx：解析 X-User-Id / X-User-Roles / X-Org-Id 注入 context
  3. handler 桩 → TicketCreate DTO 校验（title≤200、description 必填）
  4. TicketService.Create 单事务：
-      a. 幂等检查（idempotency_keys 命中则返回首次结果）
-      b. 生成 number（org 内流水：SD-2026-000123）+ 落 tickets(status=new)
-      c. SlaEngine.Start：按 priority 选 sla_policy_targets，落 sla_timers(response/resolve due)
-      d. TimelineService.Append(event_type=ticket_created)
+      a. 幂等检查（idempotency_keys 命中 → 返回首次结果）
+      b. 生成 number（org 内流水 SD-2026-000123）+ 落 tickets(status=new)
+      c. SlaEngine.Start：按 priority 选 sla_policy_targets，落 sla_timers
+      d. TimelineService.Append(ticket_created)
       e. Outbox.Enqueue(ticket.created)            ← 与上同一事务
       f. commit
- 5. 返回 201 Ticket（不等待 AI；分类/定级为后续异步写回）
+ 5. 返回 201 Ticket（不等待 AI；分类/定级为后续异步写回 —— 降级红线，系统详设 §9 step2★）
  6. 后台 Outbox Relay 异步发 ticket.created → NATS → insight 消费
 ```
 
 ### 2.3 部署形态
 
-- 单可执行文件 `smartdesk-core`，内置 HTTP server + outbox relay + JS consumer（同进程 goroutine，可经配置拆分独立进程）。
-- 仅监听内网端口（架构 §6：外部不可达）；`/healthz`(liveness)、`/readyz`(readiness，探测 DB+NATS)。
-- 无状态、可水平扩；流水号生成与 outbox relay 用行级锁 / `FOR UPDATE SKIP LOCKED` 保证多副本安全。
+- 单可执行文件 `smartdesk-core`，内置 HTTP server + outbox relay + JetStream consumer（同进程 goroutine，可经配置拆分独立进程）。
+- 仅监听内网端口（系统详设 §2.2/§7：外部不可达）；`/healthz`(liveness)、`/readyz`(readiness，探测 DB+NATS)。
+- 无状态、可水平扩；流水号生成与 outbox relay 用 `FOR UPDATE SKIP LOCKED` 保证多副本安全。
 
 ---
 
-## 3. 数据库 schema 设计
+## 3. 数据/存储（core 归属部分）
 
-> 命名 snake_case；主键 `uuid`（v7，应用生成）；所有业务表含 `org_id NOT NULL DEFAULT 'default'`、`created_at`、`updated_at`；可软删表加 `deleted_at`。时间一律 `timestamptz`（UTC）。迁移文件 `migrations/NNNN_<name>.up.sql` / `.down.sql`，由 `db-migration` 技能生成执行。
+> 仅本模块归属。约定（系统详设 §4）：snake_case；主键 UUID v7（应用层生成）；全业务表含 `org_id NOT NULL DEFAULT 'default'`、`created_at`、`updated_at`；可软删表加 `deleted_at`；时间 `timestamptz`(UTC)；时长用整数分钟/秒。迁移 `migrations/NNNN_<name>.{up,down}.sql`（`db-migration` 技能生成执行）。
 
-### 3.1 实体清单与迁移划分
+### 3.1 实体清单（对照系统详设 §4.2 core OLTP）
+
+系统详设 §4.2 列举的 core OLTP 实体本文全部覆盖：`users / roles / user_roles`、`categories`、`sla_policies / sla_policy_targets`、`tickets`、`ticket_status_history`、`ticket_timeline`、`assignments`、`comments`、`attachments`、`ticket_links`、`sla_timers`、`watchers`、`csat_ratings`、`processed_events`。
+
+**实现增表（R3，系统详设 §4.2 未枚举）**：`outbox_events`、`idempotency_keys` —— 纯实现支撑，不进契约、不改数据模型事实源。
 
 | 迁移 | 表 | 归属任务 |
 |---|---|---|
-| 0001_init | `users, roles, user_roles` | CORE-0 / CORE-C |
-| 0001_init | `categories` | CORE-0 / CORE-C |
-| 0001_init | `sla_policies, sla_policy_targets` | CORE-0 / CORE-C |
+| 0001_init | `roles, users, user_roles, categories, sla_policies, sla_policy_targets` | CORE-0 / CORE-C |
 | 0002_tickets | `tickets, ticket_status_history, ticket_timeline` | CORE-0 / CORE-A1 |
 | 0003_workflow | `assignments, comments, attachments, ticket_links, sla_timers, watchers, csat_ratings` | CORE-A/B |
 | 0004_infra | `idempotency_keys, outbox_events, processed_events` | CORE-0 |
 | 0005_seed | 角色枚举、SLA v1 基线策略、分类初始集 | CORE-C |
 
-### 3.2 核心 DDL（关键表，节选）
+### 3.2 关键 DDL（节选）
 
 ```sql
--- 角色目录 / RBAC 主数据
+-- 角色目录 / RBAC 主数据（凭证不落 core，仅 credential_ref）
 CREATE TABLE roles (
-  code TEXT PRIMARY KEY,             -- requester|agent|lead|manager|admin
+  code TEXT PRIMARY KEY,             -- requester|agent|lead|manager|admin（core.yaml RoleCode）
   name TEXT NOT NULL
 );
 CREATE TABLE users (
@@ -142,7 +156,7 @@ CREATE TABLE users (
   email         TEXT,
   display_name  TEXT NOT NULL,
   status        TEXT NOT NULL DEFAULT 'active',  -- active|disabled
-  credential_ref TEXT,               -- 指向 gateway 凭证；core 不存密码/哈希
+  credential_ref TEXT,               -- 指向 gateway 凭证；core 不存密码/哈希（系统详设 §8）
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at    TIMESTAMPTZ,
@@ -169,7 +183,7 @@ CREATE TABLE categories (
 );
 CREATE INDEX idx_categories_parent ON categories(org_id, parent_id);
 
--- SLA 策略
+-- SLA 策略（策略与执行同归 core，系统详设 §3）
 CREATE TABLE sla_policies (
   id     UUID PRIMARY KEY,
   org_id TEXT NOT NULL DEFAULT 'default',
@@ -180,13 +194,13 @@ CREATE TABLE sla_policies (
 );
 CREATE TABLE sla_policy_targets (
   policy_id        UUID NOT NULL REFERENCES sla_policies(id) ON DELETE CASCADE,
-  priority         TEXT NOT NULL,    -- P1..P4
+  priority         TEXT NOT NULL,    -- P1..P4（core.yaml Priority）
   response_minutes INT NOT NULL,
   resolve_minutes  INT NOT NULL,
   PRIMARY KEY (policy_id, priority)
 );
 
--- 工单主表
+-- 工单主表（八态，系统详设 §4.3）
 CREATE TABLE tickets (
   id           UUID PRIMARY KEY,
   org_id       TEXT NOT NULL DEFAULT 'default',
@@ -198,7 +212,7 @@ CREATE TABLE tickets (
   group_id     UUID,
   category_id  UUID REFERENCES categories(id),
   priority     TEXT NOT NULL DEFAULT 'P3',   -- P1..P4
-  status       TEXT NOT NULL DEFAULT 'new',  -- 八态
+  status       TEXT NOT NULL DEFAULT 'new',  -- new|accepted|in_progress|pending_user|resolved|closed|suspended|cancelled
   source       TEXT NOT NULL DEFAULT 'web',
   reopen_count INT NOT NULL DEFAULT 0,
   closed_at    TIMESTAMPTZ,
@@ -208,373 +222,321 @@ CREATE TABLE tickets (
   deleted_at   TIMESTAMPTZ,
   UNIQUE (org_id, number)
 );
--- 读路径索引（NFR 列表 P95<500ms，架构 §9）
-CREATE INDEX idx_tickets_org_status   ON tickets(org_id, status);
-CREATE INDEX idx_tickets_assignee     ON tickets(org_id, assignee_id);
-CREATE INDEX idx_tickets_category     ON tickets(org_id, category_id);
-CREATE INDEX idx_tickets_requester    ON tickets(org_id, requester_id);
-CREATE INDEX idx_tickets_created      ON tickets(org_id, created_at DESC);
--- q 关键词：一期 PG 全文（中文分词），二期可换
+-- 读路径索引（NFR 列表/详情 P95<500ms，系统详设 §10）
+CREATE INDEX idx_tickets_org_status ON tickets(org_id, status);
+CREATE INDEX idx_tickets_assignee   ON tickets(org_id, assignee_id);
+CREATE INDEX idx_tickets_category   ON tickets(org_id, category_id);
+CREATE INDEX idx_tickets_requester  ON tickets(org_id, requester_id);
+CREATE INDEX idx_tickets_created    ON tickets(org_id, created_at DESC);
+-- q 关键词：一期 PG 全文（中文分词），契约不绑实现（OQ-5 前向兼容）
 CREATE INDEX idx_tickets_fts ON tickets USING gin (to_tsvector('simple', coalesce(title,'')||' '||coalesce(description,'')));
 
--- 状态历史（非法跃迁不写）
 CREATE TABLE ticket_status_history (
-  id         UUID PRIMARY KEY,
-  ticket_id  UUID NOT NULL REFERENCES tickets(id),
-  from_status TEXT,
-  to_status   TEXT NOT NULL,
-  actor_id    UUID,
-  reason      TEXT,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  id UUID PRIMARY KEY, ticket_id UUID NOT NULL REFERENCES tickets(id),
+  from_status TEXT, to_status TEXT NOT NULL, actor_id UUID, reason TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
--- 时间线 / 审计（只追加，正序）
-CREATE TABLE ticket_timeline (
-  id          UUID PRIMARY KEY,
-  ticket_id   UUID NOT NULL REFERENCES tickets(id),
-  event_type  TEXT NOT NULL,         -- ticket_created|status_changed|assigned|commented|sla_*|merged...
-  actor_id    UUID,
-  payload_json JSONB NOT NULL DEFAULT '{}',
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+CREATE TABLE ticket_timeline (    -- 只追加，正序，审计不可篡改
+  id UUID PRIMARY KEY, ticket_id UUID NOT NULL REFERENCES tickets(id),
+  event_type TEXT NOT NULL,        -- ticket_created|status_changed|assigned|commented|sla_*|merged...
+  actor_id UUID, payload_json JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_timeline_ticket ON ticket_timeline(ticket_id, created_at);
 
--- 分派记录
 CREATE TABLE assignments (
-  id           UUID PRIMARY KEY,
-  ticket_id    UUID NOT NULL REFERENCES tickets(id),
-  from_user_id UUID,
-  to_user_id   UUID,
-  to_group_id  UUID,
-  kind         TEXT NOT NULL,        -- manual|auto|reassign|escalate
-  reason       TEXT,
-  actor_id     UUID,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+  id UUID PRIMARY KEY, ticket_id UUID NOT NULL REFERENCES tickets(id),
+  from_user_id UUID, to_user_id UUID, to_group_id UUID,
+  kind TEXT NOT NULL,              -- manual|auto|reassign|escalate
+  reason TEXT, actor_id UUID, created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_assignments_ticket ON assignments(ticket_id, created_at);
 
--- 评论 / 内部备注（internal 接口层过滤）
 CREATE TABLE comments (
-  id           UUID PRIMARY KEY,
-  ticket_id    UUID NOT NULL REFERENCES tickets(id),
-  author_id    UUID NOT NULL,
-  body         TEXT NOT NULL,
-  visibility   TEXT NOT NULL,        -- public|internal
+  id UUID PRIMARY KEY, ticket_id UUID NOT NULL REFERENCES tickets(id),
+  author_id UUID NOT NULL, body TEXT NOT NULL,
+  visibility TEXT NOT NULL,        -- public|internal（接口层按角色过滤）
   mentions_json JSONB NOT NULL DEFAULT '[]',
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-  deleted_at   TIMESTAMPTZ
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), deleted_at TIMESTAMPTZ
 );
 CREATE INDEX idx_comments_ticket ON comments(ticket_id, created_at);
 
--- 附件元数据（对象存 OSS）
 CREATE TABLE attachments (
-  id           UUID PRIMARY KEY,
-  ticket_id    UUID NOT NULL REFERENCES tickets(id),
-  comment_id   UUID REFERENCES comments(id),
-  uploader_id  UUID NOT NULL,
-  filename     TEXT NOT NULL,
-  content_type TEXT NOT NULL,
-  size_bytes   BIGINT NOT NULL,
-  object_key   TEXT NOT NULL,        -- OSS key
-  checksum     TEXT,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+  id UUID PRIMARY KEY, ticket_id UUID NOT NULL REFERENCES tickets(id),
+  comment_id UUID REFERENCES comments(id), uploader_id UUID NOT NULL,
+  filename TEXT NOT NULL, content_type TEXT NOT NULL, size_bytes BIGINT NOT NULL,
+  object_key TEXT NOT NULL, checksum TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 关联 / 合并
 CREATE TABLE ticket_links (
-  id               UUID PRIMARY KEY,
-  ticket_id        UUID NOT NULL REFERENCES tickets(id),
+  id UUID PRIMARY KEY, ticket_id UUID NOT NULL REFERENCES tickets(id),
   linked_ticket_id UUID NOT NULL REFERENCES tickets(id),
-  relation         TEXT NOT NULL,    -- related|duplicate|merged_into
-  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+  relation TEXT NOT NULL,          -- related|duplicate|merged_into
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- SLA 计时实例（priority/policy 快照，策略变更不回改历史）
 CREATE TABLE sla_timers (
-  id                   UUID PRIMARY KEY,
-  ticket_id            UUID NOT NULL REFERENCES tickets(id),
-  policy_id            UUID NOT NULL,
-  priority             TEXT NOT NULL,
-  response_due_at      TIMESTAMPTZ NOT NULL,
-  resolve_due_at       TIMESTAMPTZ NOT NULL,
-  response_met         BOOLEAN NOT NULL DEFAULT false,
-  resolve_met          BOOLEAN NOT NULL DEFAULT false,
-  paused               BOOLEAN NOT NULL DEFAULT false,
-  paused_at            TIMESTAMPTZ,
-  paused_total_seconds INT NOT NULL DEFAULT 0,
-  breached             BOOLEAN NOT NULL DEFAULT false,
-  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+  id UUID PRIMARY KEY, ticket_id UUID NOT NULL REFERENCES tickets(id),
+  policy_id UUID NOT NULL, priority TEXT NOT NULL,
+  response_due_at TIMESTAMPTZ NOT NULL, resolve_due_at TIMESTAMPTZ NOT NULL,
+  response_met BOOLEAN NOT NULL DEFAULT false, resolve_met BOOLEAN NOT NULL DEFAULT false,
+  paused BOOLEAN NOT NULL DEFAULT false, paused_at TIMESTAMPTZ,
+  paused_total_seconds INT NOT NULL DEFAULT 0, breached BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE UNIQUE INDEX idx_sla_timer_ticket ON sla_timers(ticket_id);
--- 扫描即将/已超时（warning/breached 事件）
 CREATE INDEX idx_sla_due ON sla_timers(resolve_due_at) WHERE NOT resolve_met AND NOT paused;
 
 CREATE TABLE watchers (
-  ticket_id UUID NOT NULL REFERENCES tickets(id),
-  user_id   UUID NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY (ticket_id, user_id)
+  ticket_id UUID NOT NULL REFERENCES tickets(id), user_id UUID NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (ticket_id, user_id)
 );
 CREATE TABLE csat_ratings (
-  ticket_id    UUID PRIMARY KEY REFERENCES tickets(id),
-  requester_id UUID NOT NULL,
-  score        SMALLINT NOT NULL,   -- 1..5
-  comment      TEXT,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+  ticket_id UUID PRIMARY KEY REFERENCES tickets(id), requester_id UUID NOT NULL,
+  score SMALLINT NOT NULL,         -- 1..5（OQ-12）
+  comment TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 基础设施表
+-- 基础设施表（R3 实现增表 + processed_events 系统详设 §6）
 CREATE TABLE idempotency_keys (
-  org_id      TEXT NOT NULL,
-  key         TEXT NOT NULL,
-  request_hash TEXT NOT NULL,        -- 防同键不同体
-  response_json JSONB,
-  status_code INT,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  org_id TEXT NOT NULL, key TEXT NOT NULL, request_hash TEXT NOT NULL,
+  response_json JSONB, status_code INT, created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (org_id, key)
 );
 CREATE TABLE outbox_events (
-  id           UUID PRIMARY KEY,     -- = event_id
-  subject      TEXT NOT NULL,        -- smartdesk.<domain>.<event>
-  event_type   TEXT NOT NULL,
-  org_id       TEXT NOT NULL,
-  ticket_id    UUID,
-  payload_json JSONB NOT NULL,
-  published_at TIMESTAMPTZ,          -- NULL=待发
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+  id UUID PRIMARY KEY,             -- = event_id（事件信封 event_id）
+  subject TEXT NOT NULL,           -- smartdesk.<domain>.<event>
+  event_type TEXT NOT NULL, org_id TEXT NOT NULL, ticket_id UUID,
+  payload_json JSONB NOT NULL, published_at TIMESTAMPTZ,  -- NULL=待发
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_outbox_unpublished ON outbox_events(created_at) WHERE published_at IS NULL;
 CREATE TABLE processed_events (    -- 消费幂等（insight.classification_suggested）
-  event_id   UUID PRIMARY KEY,
-  processed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  event_id UUID PRIMARY KEY, processed_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
 ### 3.3 种子数据（0005_seed，CORE-C）
 
 - `roles`：`requester|agent|lead|manager|admin`。
-- SLA v1 基线（架构 §3.2 / OQ-1）：P1 15m/4h；P2 60m/1bd；P3 240m/3bd；P4 1bd/5bd（"bd"换算为分钟按 8h 工作日入库；工作日历是否启用见 §9 开放项）。
+- SLA v1 基线（OQ-1 / core.yaml SlaPolicy 描述）：P1 15m/4h；P2 60m/1bd；P3 240m/3bd；P4 1bd/5bd。「bd（工作日）」一期按固定 8h/日折算为整数分钟入库（工作日历见 §9 O4）。
 - `categories` 初始集：IT / 账号权限 / 办公行政 / 人事 / 财务 / 其他（M2 由产品+admin 细化）。
 
-### 3.4 ER 关系要点（取自架构 §3.4）
+### 3.4 ER 要点
 
 - `tickets` 1—N `comments / attachments / ticket_timeline / assignments / ticket_links / sla_timers / csat_ratings / watchers`。
-- `tickets.category_id → categories.id`；`assignee_id/requester_id → users.id`。
+- `tickets.category_id→categories.id`；`assignee_id/requester_id→users.id`。
 - `sla_timers` 快照 `priority/policy_id`，策略变更不回改历史计时。
-- insight 读模型只读投影，**不与 core 共享事务**，以事件为唯一同步通道。
+- insight 读模型独立 schema、只读投影，**不与 core 共享事务**，以事件为唯一同步通道（系统详设 §4.1/§6）。
 
 ---
 
-## 4. API 接口设计（与 core.yaml 对齐）
+## 4. API/契约对齐（逐 path 对照 core.yaml）
 
-> 接口形态、路径、schema 全部以 `openapi/core.yaml` 为准，**本节只补实现语义**，不引入契约外字段。所有路径前缀 `/v1`，`security: serviceAuth`（`/healthz`、`/readyz` 除外）。统一错误 `Error{code,message,details?,trace_id}`；HTTP 语义：400 校验 / 401 未认证 / 403 越权 / 404 不存在 / 409 状态冲突 / 413 附件超限 / 422 业务规则。
+> 路径/schema/状态码全部以 core.yaml 为准，本节只补**实现语义**，不引入契约外字段。全部 `/v1` 前缀，`security: serviceAuth`（`/healthz`、`/readyz` 除外）。错误统一 `Error{code,message,details?,trace_id}`；HTTP 语义：400/401/403/404/409/413/422（系统详设 §5.2）。
 
-### 4.1 端点 → 服务 → 实现要点映射
+### 4.1 逐 path 对照表（core.yaml `paths` 全量）
 
-| 方法 路径 | 服务 | 实现要点 / 验收锚点 |
+| core.yaml path / method | 服务 | 实现要点 / 验收锚点 |
 |---|---|---|
-| `POST /tickets` | TicketService | 事务落库 new→启 SLA→写时间线→outbox `ticket.created`；幂等键；US-2.1（AI 无关降级，AC4） |
-| `GET /tickets` | TicketService | 过滤(status/priority/assignee/requester/group/category/q/sla_state)+排序+分页(≤100)；`q` 走 FTS；返回 `TicketPage` |
-| `GET /tickets/{id}` | TicketService | `TicketDetail`（含 sla / suggestion / links）；可见性过滤；404/403 |
-| `PATCH /tickets/{id}` | TicketService | 改 title/desc/category/priority；**priority 变更触发 SlaEngine.Recalc**；422 业务校验 |
-| `POST /tickets/{id}/transitions` | TransitionService | 状态机表校验，非法跃迁 **409**；写 history+timeline；幂等键；SLA 暂停/恢复联动；US-2.2 |
-| `POST /tickets/{id}/assignments` | AssignmentService | manual/auto/reassign/escalate；写 assignments+timeline→outbox `ticket.assigned/reassigned`；US-2.3/5.1 |
-| `GET /tickets/{id}/comments` | CommentService | **internal 按 X-User-Roles 过滤**：requester 不返回 internal（US-2.4 AC2）；分页 |
-| `POST /tickets/{id}/comments` | CommentService | public/internal + @提及；写 timeline→outbox `ticket.commented`；US-2.4/5.2 |
-| `GET /tickets/{id}/attachments` | AttachmentService | 元数据列表 |
-| `POST /tickets/{id}/attachments` | AttachmentService | 校验 ≤20MB + 类型白名单（超限 413 / 非白名单 422）→签发**上传**预签名 URL；OQ-9 |
-| `GET /attachments/{attId}/download-url` | AttachmentService | 鉴权后签发短时**下载** URL；越权 **403**；US-2.7 AC2 |
-| `POST /tickets/{id}/links` | LinkService | related/duplicate/merged_into；合并：子单 merged_into 主单+状态同步+outbox `ticket.merged`；冲突 409；US-2.6 |
-| `GET /tickets/{id}/sla` | SlaEngine | 返回 `SlaTimer`（response/resolve due、paused、breached）；US-2.5 |
-| `GET /tickets/{id}/timeline` | TimelineService | 正序、只读追加、分页；US-2.8 |
-| `POST /tickets/{id}/watchers` | TicketService | watch=true/false 关注/取关；204；US-5.3 |
-| `POST /tickets/{id}/csat` | TicketService | 仅 resolved/closed 可评（否则 409）；1..5；US-6.3/OQ-12 |
-| `GET/POST /config/categories`、`PATCH/DELETE /config/categories/{catId}` | ConfigService | taxonomy 树 CRUD（admin）；删除时被引用 409；OQ-4 |
-| `GET/PUT /config/sla-policies` | ConfigService | SLA 策略读/配（admin，改数值不改契约形态）；OQ-1 |
-| `GET/POST /config/users`、`PUT /config/users/{userId}/roles` | ConfigService | 用户目录/角色（admin，RBAC 主数据）；US-7.3 |
-| `GET /healthz` / `GET /readyz` | platform | liveness / readiness（探测 DB+NATS） |
+| `POST /tickets` | TicketService | 事务落库 new→启 SLA→写时间线→outbox `ticket.created`；幂等键；AI 无关降级（US-2.1 AC4 / 系统详设 §9）。201 Ticket |
+| `GET /tickets` | TicketService | 过滤 `status/priority/assignee_id/requester_id/group_id/category_id/q/sla_state`+`sort`+分页(`page_size`≤100)；`q` 走 FTS；返回 `TicketPage` |
+| `GET /tickets/{id}` | TicketService | `TicketDetail`(含 `sla`/`suggestion`/`links`)；可见性过滤；403/404 |
+| `PATCH /tickets/{id}` | TicketService | 改 `title/description/category_id/priority`；**priority 变更触发 SlaEngine.Recalc**；422 业务校验。返回 Ticket |
+| `POST /tickets/{id}/transitions` | TransitionService | 状态机表校验，非法跃迁 **409**；写 history+timeline；幂等键；SLA 暂停/恢复联动；action enum 见 §4.2（US-2.2） |
+| `POST /tickets/{id}/assignments` | AssignmentService | `kind∈{manual,auto,reassign,escalate}`；写 assignments+timeline→outbox `ticket.assigned`/`ticket.reassigned`；201 Assignment（US-2.3/5.1） |
+| `GET /tickets/{id}/comments` | CommentService | **internal 按 X-User-Roles 过滤**：requester 不返回 internal（US-2.4 AC2）；分页 `CommentPage` |
+| `POST /tickets/{id}/comments` | CommentService | `visibility∈{public,internal}`+`mentions`；写 timeline→outbox `ticket.commented`；requester 回复 public 时内部触发 `user_reply` 流转（见 §4.2）。201 Comment |
+| `GET /tickets/{id}/attachments` | AttachmentService | 元数据数组 `Attachment[]` |
+| `POST /tickets/{id}/attachments` | AttachmentService | `AttachmentInit`：`size_bytes`≤20MB（超限 **413**）+ 类型白名单（非白名单 **422**）→签发**上传**预签名 `AttachmentUpload`（OQ-9） |
+| `GET /attachments/{attId}/download-url` | AttachmentService | 鉴权后签发短时**下载** URL；越权 **403**（US-2.7 AC2）；返回 `AttachmentUpload` |
+| `POST /tickets/{id}/links` | LinkService | `relation∈{related,duplicate,merged_into}`；合并：子单 merged_into 主单+状态同步+outbox `ticket.merged`；冲突 **409**（US-2.6）。201 TicketLink |
+| `GET /tickets/{id}/sla` | SlaEngine | 返回 `SlaTimer`（response/resolve due、paused、breached）（US-2.5）；404 |
+| `GET /tickets/{id}/timeline` | TimelineService | 正序、只读追加、分页 `TimelinePage`（US-2.8） |
+| `POST /tickets/{id}/watchers` | TicketService | body `{watch:bool}` 关注/取关；**204**（US-5.3） |
+| `POST /tickets/{id}/csat` | TicketService | `CsatCreate{score 1..5, comment?}`；仅 resolved/closed 可评，否则 **409**（OQ-12/US-6.3）。201 |
+| `GET /config/categories` | ConfigService | taxonomy 树查询 `Category[]`（OQ-4/US-7.3 AC1） |
+| `POST /config/categories` | ConfigService | 新增节点（admin）；201 Category；403 |
+| `PATCH /config/categories/{catId}` | ConfigService | 改名/启停/排序/移动父节点；200 Category |
+| `DELETE /config/categories/{catId}` | ConfigService | 删除/停用；**被引用 409**；204 |
+| `GET /config/sla-policies` | ConfigService | SLA 策略查询 `SlaPolicy[]`（OQ-1/US-7.3 AC2） |
+| `PUT /config/sla-policies` | ConfigService | 配置策略（admin，改数值不改契约形态）；200 SlaPolicy |
+| `GET /config/users` | ConfigService | 用户目录分页 `UserPage`（RBAC 主数据，US-7.3 AC3） |
+| `POST /config/users` | ConfigService | 建用户并授角色（admin）；201 User |
+| `PUT /config/users/{userId}/roles` | ConfigService | body `{roles:RoleCode[]}` 设角色（admin，一账号可兼多角色）；200 User |
+| `GET /healthz` / `GET /readyz` | platform | liveness / readiness（探测 DB+NATS）；`security:[]` |
 
-### 4.2 状态机（实现自 core.yaml `/transitions` 描述表，梁栋裁决口径）
+> **契约面缺口确认**：core.yaml 当前**无** insight 写回的同步 POST 端点（D1 裁定：纯事件写回，写 `Ticket.suggestion` 字段，不新增 core 端点）。本文 §5 据此实现，不擅自增端点。
 
-显式映射 `action → from → to`，非法跃迁拒绝 **409**，每次写 history+timeline（操作人/时间/前后状态）。终态 `closed`/`cancelled`。
+### 4.2 状态机（实现自 core.yaml `/transitions` 描述表，R4 已对齐契约口径）
+
+显式映射 `action → from → to`，非法跃迁 **409**，每次写 history+timeline（操作人/时间/前后状态）。终态 `closed`/`cancelled`。**action 名以 core.yaml `TransitionRequest.action` enum 为准**（见 R4 / §9 O2）。
 
 | action | from | to | 触发方 | SLA 联动 |
 |---|---|---|---|---|
-| accept | new | accepted | 坐席 | response_met 判定 |
-| start | accepted, pending_user | in_progress | 坐席 | pending_user→in_progress 手工恢复，**SLA 恢复顺延** |
-| wait_user | in_progress | pending_user | 坐席 | **SLA 暂停**（paused=true, paused_at=now） |
-| user_reply（系统自动，非客户端 action） | pending_user | in_progress | 系统 | 报单人回复时 core 自动触发（US-2.2 AC2），**SLA 恢复** |
-| resolve | in_progress | resolved | 坐席 | resolve_met 判定；outbox `ticket.resolved` |
-| close | resolved | closed | 报单人/坐席 | 终态，写 closed_at；pending_user 超时仅提醒不自动关（OQ-8） |
-| reopen | closed | in_progress | 报单人 | **仅 closed 后 7 天内**（OQ-13），reopen_count+1 |
-| suspend | in_progress | suspended | 坐席/lead | 内部挂起（区别于待用户） |
-| resume | suspended | in_progress | 坐席/lead | **仅**解挂起，不承担 pending_user 恢复 |
-| cancel | new, accepted, in_progress, pending_user, suspended | cancelled | 坐席/lead | 终态 |
+| `accept` | new | accepted | 坐席 | response_met 判定 |
+| `start` | accepted, pending_user | in_progress | 坐席 | pending_user→in_progress 的手工恢复路径，**SLA 恢复顺延** |
+| `wait_user` | in_progress | pending_user | 坐席 | **SLA 暂停**（paused=true, paused_at=now） |
+| `user_reply`（系统自动，非客户端 action） | pending_user | in_progress | 系统 | 报单人回复 public 评论时由 CommentService 内部触发 TransitionService（US-2.2 AC2），**SLA 恢复** |
+| `resolve` | in_progress | resolved | 坐席 | resolve_met 判定；outbox `ticket.resolved` |
+| `close` | resolved | closed | 报单人/坐席 | 终态，写 closed_at；pending_user 超时仅提醒不自动关（OQ-8） |
+| `reopen` | closed | in_progress | 报单人 | **仅 closed 后 7 天内**（OQ-13），reopen_count+1 |
+| `suspend` | in_progress | suspended | 坐席/lead | 内部挂起（区别于待用户） |
+| `resume` | suspended | in_progress | 坐席/lead | **仅**解挂起；不承担 pending_user 恢复 |
+| `cancel` | new, accepted, in_progress, pending_user, suspended | cancelled | 坐席/lead | 终态 |
 
-> 关键裁决（梁栋，core.yaml 内）：`resume` 语义单一化——**仅** `suspended→in_progress`；`pending_user→in_progress` 走系统自动（user_reply）或坐席 `start`，**不复用 resume**。enum 不变。`user_reply` 不是客户端可调 action，由 CommentService 在 requester 回复时内部调用 TransitionService。
-
-### 4.3 异步写回入口（消费侧，非 HTTP）
-
-`insight.classification_suggested` 事件消费 → 落 `TicketDetail.suggestion`（建议态）；一期不自动改分类/优先级，**仅当 confidence≥0.85 且开启自动填充**时填充（OQ-4，开关为 config）。消费以 `event_id` 去重（`processed_events`）。
+> 梁栋裁决（已固化进 core.yaml）：`resume` 语义单一化（仅 `suspended→in_progress`）；`pending_user→in_progress` 走系统 `user_reply` 或坐席 `start`，**不复用 resume**；enum 不变。系统详设 §4.3 示意图措辞（`confirm`/`wait`/复用 `resume`）建议回填同步 → §9 O2。
 
 ---
 
-## 5. 模块内部组件划分
+## 5. 跨服务交互（事件/同步调用/降级）
 
-> 对应架构 §11 的 CORE-* 任务到代码包。Go 包布局：
+### 5.1 服务间信任（系统详设 §7）
+
+- 入站：仅信任 gateway 的 `serviceAuth`(service-jwt，校验签名 + `aud=core`)，mTLS 通道；解析透传头 `X-User-Id/X-User-Roles/X-Org-Id/X-Request-Id`。
+- core **不二次鉴权用户身份**，但用 `X-User-*` 做领域级数据过滤（内部备注、本组范围、附件越权）——纵深防御。
+- `X-Request-Id`/`trace_id` 全链路透传，落日志与时间线。
+
+### 5.2 事件发布（系统详设 §6，作为发布者）
+
+- 信封：`{event_id, event_type, occurred_at, org_id, ticket_id, actor_id, version, payload}`；主题 `smartdesk.<domain>.<event>`；Stream `SMARTDESK_EVENTS`。
+- **outbox relay**（R3）：单事务写 `outbox_events`；relay 以 `FOR UPDATE SKIP LOCKED` 取未发事件→publish→置 `published_at`，多副本安全、至少一次。
+- core 发布的事件（系统详设 §6.3）：`ticket.created`、`ticket.assigned`/`ticket.reassigned`、`ticket.status_changed`、`ticket.commented`、`ticket.sla_warning`/`ticket.sla_breached`、`ticket.resolved`/`ticket.closed`/`ticket.reopened`、`ticket.merged`。
+- 顺序（D3）：按 `ticket_id` 一致性哈希分区，单工单按 `occurred_at` 有序；跨工单不保证全局序。
+
+### 5.3 异步写回消费（系统详设 §6.3 / D1，作为消费者）
+
+- 订阅 `insight.classification_suggested`（JetStream 持久消费者），按 `event_id` 去重（`processed_events`）。
+- 落 `TicketDetail.suggestion`（建议态）。一期**不自动改**分类/优先级；**仅当 confidence≥0.85 且开启自动填充开关**时填充（OQ-4，开关入 config，`ClassificationSuggestion.applied=true`）。
+- **守红线**：不开 core 同步写回端点（D1-B），契约面最小，AI 异步写回不阻塞主流程。
+- 人工采纳/纠偏（D1 路径3）：gateway `POST /tickets/{id}/suggestion` → core 走工单分类更新路径（即 `PATCH /tickets/{id}` 的 category/priority），属人触发同步动作，非 AI 写回。
+
+### 5.4 降级（系统详设 §9）
+
+insight / NATS / 对象存储任一不可用，**建单/流转/评论/查询主流程不受影响**：事件先入 outbox 待补投；`suggestion` 为空、相似/附件功能局部降级。这是 core 对外的核心可靠性承诺（US-2.1 AC4 / SC-002）。
+
+---
+
+## 6. 内部组件划分
+
+> 对应系统详设 §12.1 的 CORE-* 到代码包。Go 包布局：
 
 ```
 smartdesk-core/
 ├─ cmd/smartdesk-core/main.go        # 装配：config→db→nats→server→relay→consumer
-├─ openapi/core.yaml                 # 软链/同步自仓库根 openapi/（CI 校验源）
 ├─ internal/
-│  ├─ config/                        # envconfig 加载
-│  ├─ httpapi/                       # oapi-codegen 生成桩 + handler 适配 (DTO↔domain)
-│  │   ├─ gen/                       #   生成代码（types_gen.go, server_gen.go）
-│  │   └─ middleware/                #   recover/requestID/serviceAuth/userCtx/metrics
-│  ├─ domain/                        # 纯领域：实体、状态机表、SLA 计算、可见性规则、错误码
-│  ├─ ticket/        (CORE-A1)       # 建单/查询/详情/更新/watcher/csat
+│  ├─ config/                        # envconfig 加载                              (CORE-0)
+│  ├─ httpapi/
+│  │   ├─ gen/                       # oapi-codegen 生成（types/server）           (CORE-0)
+│  │   └─ middleware/                # recover/requestID/serviceAuth/userCtx/metrics(CORE-0)
+│  ├─ domain/                        # 纯领域：实体/状态机表/SLA 计算/可见性/错误码
+│  ├─ ticket/        (CORE-A1)       # 建单/查询/详情/更新 + watcher/csat（见 R2）
 │  ├─ transition/    (CORE-A1)       # 状态机执行 + history
 │  ├─ assignment/    (CORE-A2)       # 分派/改派/升级/规则自动分派
-│  ├─ sla/           (CORE-A3)       # SlaEngine：start/pause/resume/recalc + 扫描器(warning/breached)
+│  ├─ sla/           (CORE-A3)       # SlaEngine：start/pause/resume/recalc + 扫描器
 │  ├─ comment/       (CORE-B1)       # 评论/内部备注/可见性过滤/@提及/触发 user_reply
 │  ├─ attachment/    (CORE-B2)       # 元数据 + OSS 预签名 + 下载授权
-│  ├─ timeline/      (CORE-B3)       # 时间线追加/查询（被各服务复用）
 │  ├─ link/          (CORE-B4)       # 关联/合并
+│  ├─ timeline/      (CORE-B3)       # 时间线追加/查询 + 列表/过滤（与 ticket 协作）
 │  ├─ config/        (CORE-C)        # taxonomy / sla 策略 / 用户角色 目录
-│  ├─ repository/                    # pgx+sqlc 实现各 domain port；Tx 管理
-│  │   └─ queries/*.sql              #   sqlc 源
-│  ├─ events/                        # 事件信封、outbox 写入端口、relay(→NATS)、consumer
-│  ├─ objstore/                      # S3/MinIO 客户端、预签名
-│  └─ platform/                      # db pool、nats conn、logger(slog)、otel、健康检查
-├─ migrations/                       # golang-migrate up/down
+│  ├─ repository/    (CORE-0)        # pgx+sqlc 实现各 domain port；Tx 管理；queries/*.sql
+│  ├─ events/        (CORE-0)        # 事件信封/outbox 写入/relay(→NATS)/consumer
+│  ├─ objstore/      (CORE-B2)       # S3/MinIO 客户端、预签名
+│  └─ platform/      (CORE-0)        # db pool/nats conn/slog/otel/健康检查
+├─ migrations/                       # golang-migrate up/down                       (CORE-0)
 └─ test/                             # testcontainers 集成测试
 ```
 
-### 5.1 组件职责与负责人（对齐架构 §11.1）
+**集成纪律**（石磊把守）：模块 A（陈川）/模块 B（连城）通过 `domain` 端口与 `repository`/`events` 协作，不直接互相 import；跨模块拼装（如 `TicketDetail` 聚合 sla+suggestion+links）在 `ticket` 包按只读端口组合。
 
-| 组件包 | 任务 | 负责人 | 职责 |
-|---|---|---|---|
-| `config`,`platform`,`httpapi/middleware`,`events`(outbox/relay/consumer),`repository`(Tx 框架),`migrations` 0001/0002/0004 | **CORE-0 骨架** | 石磊 | 脚手架、DB schema/迁移、事件发布客户端(outbox+relay)、配置、健康检查/指标；集成层与契约对齐 |
-| `ticket`,`transition`,`domain`(状态机) | CORE-A1 | 陈川 | 建单/八态流转/非法跃迁拒绝/幂等/查询详情更新 |
-| `assignment` | CORE-A2 | 陈川 | 分派/改派/规则自动分派/升级 |
-| `sla` | CORE-A3 | 陈川 | SLA 计时引擎：启动/暂停/恢复/预警/超时事件 |
-| `comment` | CORE-B1 | 连城 | 评论/内部备注（接口层可见性过滤）+ @提及 |
-| `attachment`,`objstore` | CORE-B2 | 连城 | 附件元数据 + OSS 集成 + 下载授权 |
-| `ticket`(list/filter),`timeline` | CORE-B3 | 连城 | 查询/列表/过滤/分页 + 时间线/审计 |
-| `link` | CORE-B4 | 连城 | 关联/合并 |
-| `config` + 0005_seed | CORE-C | 石磊 / 陈川分担 | taxonomy 树 + SLA 策略 + 用户/角色目录 |
+### 6.1 横切关注点
 
-> **集成与契约对齐**由石磊把守：模块 A（陈川）/模块 B（连城）通过 `domain` 端口与 `repository`/`events` 协作，避免直接互相 import；跨模块拼装（如 `TicketDetail` 聚合 sla+suggestion+links）在 `ticket` 包按只读端口组合。
-
----
-
-## 6. 横切关注点
-
-### 6.1 事务与一致性
-- 核心写用例在单 pgx 事务内完成「业务表 + timeline + outbox」三写；`ticket.created` 等事件**不在事务里直接发 NATS**，而是写 `outbox_events`，由 relay 异步投递（事务性发件箱）——避免「库提交成功但消息丢失/发了但库回滚」。
-
-### 6.2 幂等
-- 写操作读 `Idempotency-Key` 头：命中 `idempotency_keys`（org_id+key）且 `request_hash` 一致 → 返回首次响应；不一致 → 409。状态流转/分派强制幂等（US-2.2 AC4）。
-
-### 6.3 事件（架构 §5）
-- 信封：`{event_id, event_type, occurred_at, org_id, ticket_id, actor_id, version, payload}`；subject `smartdesk.<domain>.<event>`；Stream `SMARTDESK_EVENTS`。
-- relay：`FOR UPDATE SKIP LOCKED` 取未发事件 → publish → 置 `published_at`；多副本安全、至少一次。
-- consumer：JetStream 持久消费者，按 `event_id` 去重（`processed_events`），仅订阅 `insight.classification_suggested`。
-- 按 `ticket_id` 保单工单有序。
-
-### 6.4 可见性 / 领域级授权（纵深防御）
-- `serviceAuth` 校验 service-jwt 签名 + `aud=core`；`X-User-Id/Roles/Org-Id` 注入 context。
-- 规则集中在 `domain`：requester 仅见本人工单与 public 评论（internal 接口层过滤）；附件下载越权 403；本组范围由 `group_id`/scope 过滤。**这是 core 的纵深防御，非重复鉴权**（鉴权在 gateway 收口）。
-
-### 6.5 可观测性（架构 §9）
-- `slog` 结构化 JSON，统一 `trace_id/request_id/org_id/actor_id`；审计走 timeline（不可篡改）。
-- `/metrics`：接口 P95/P99、SLA 计时准确性、outbox lag、事件消费 lag。
-- OTel trace 透传 `X-Request-Id`；`/healthz`、`/readyz`（DB+NATS）。
+- **事务**：核心写在单 pgx 事务内三写「业务表 + timeline + outbox」；事件不在事务内直发 NATS（R3）。
+- **幂等**：写操作读 `Idempotency-Key`；命中 `idempotency_keys`(org_id+key) 且 `request_hash` 一致→返回首次响应，不一致→409。
+- **可见性/领域授权**：规则集中在 `domain`；requester 仅见本人工单与 public 评论；附件下载越权 403；本组范围按 `group_id`/scope。
+- **可观测性**（系统详设 §10）：`slog` 结构化 JSON（统一 `trace_id/request_id/org_id/actor_id`）；`/metrics`（P95/P99、SLA 计时准确性、outbox lag、消费 lag）；OTel trace；`/healthz`、`/readyz`。
 
 ---
 
 ## 7. 任务分解与里程碑
 
-> 颗粒度对齐架构 §11.1 的 CORE-* 与 §11.2 里程碑。**契约冻结前所有开发 Issue 置 blocked**，冻结后由石磊解阻塞并路由。
+> 任务 ID 对齐系统详设 §12.1，里程碑对齐 §12.2（R2/R5）。**契约冻结前所有开发 Issue 置 blocked**，冻结后由石磊解阻塞并路由。
 
-### 7.1 任务清单（建议拆为子 Issue）
+### 7.1 任务清单（CORE-* 归并，废止 D 系列）
 
-| ID | 任务 | 负责人 | 依赖 | 里程碑 | 主要交付 |
+| ID（系统详设 §12.1） | 任务 | 负责人 | 依赖 | 里程碑（§12.2） | 主要交付 |
 |---|---|---|---|---|---|
-| CORE-0a | 服务脚手架（config/platform/logger/健康检查/指标/HTTP 装配 + oapi-codegen 接入） | 石磊 | 契约冻结 | M2 | 可启动空服务，`/healthz`、`/readyz`、契约桩生成 |
-| CORE-0b | DB schema + 迁移 0001/0002/0004（含 outbox/idempotency/processed） | 石磊 | — | M2 | `migrations/` + sqlc 生成基线 |
-| CORE-0c | 事件骨架：outbox 写入端口 + relay + JetStream consumer | 石磊 | 0b、NATS 就绪 | M2 | `ticket.created` 可投递、消费去重 |
-| CORE-A1 | 工单状态机：建单/八态流转/非法跃迁 409/幂等 + 查询详情更新 | 陈川 | 0a/0b/0c | M2 | `/tickets` POST/GET/{id} GET/PATCH、`/transitions` |
-| CORE-A2 | 分派/改派/规则自动分派/升级 | 陈川 | A1 | M2 | `/tickets/{id}/assignments` |
-| CORE-A3 | SLA 引擎：启动/暂停/恢复/重算 + 扫描器（warning/breached 事件） | 陈川 | A1 | M2 | `/tickets/{id}/sla` + 后台扫描 |
-| CORE-B1 | 评论/内部备注（可见性过滤）+ @提及 + user_reply 自动流转 | 连城 | A1 | M2 | `/tickets/{id}/comments` GET/POST |
-| CORE-B3 | 查询/列表/过滤/分页 + 时间线/审计 | 连城 | A1 | M2 | `/tickets` 过滤增强、`/timeline` |
-| CORE-C | 配置：taxonomy 树 + SLA 策略 + 用户/角色目录 + 0005_seed | 石磊/陈川 | 0b | M2 | `/config/*` 全量 |
-| CORE-B2 | 附件元数据 + OSS 集成 + 下载授权（预签名 ≤20MB/白名单） | 连城 | A1、OSS 就绪 | M2/M3 | `/attachments`、`/download-url` |
-| CORE-B4 | 关联/合并 | 连城 | A1 | M3 | `/tickets/{id}/links` |
-| CORE-D1 | watchers / csat | 连城 | A1 | M2/M3 | `/watchers`、`/csat` |
-| CORE-D2 | 异步写回消费：`insight.classification_suggested`→建议态（OQ-4 阈值） | 石磊 | 0c | M3 | suggestion 落库 + 自动填充开关 |
-| CORE-D3 | 集成与契约一致性：`api-contract-check` 接 CI、跨模块联调、性能基线 | 石磊 | A/B/C | M2/M4 | CI 绿、P95<500ms 验证 |
+| **CORE-0** | 骨架：schema/迁移(0001/0002/0004)、事件客户端(outbox+relay+consumer)、健康检查/指标、config/platform/middleware、oapi-codegen 接入 | 石磊 | 契约冻结 | M2 | 可启动空服务，`/healthz`/`/readyz`，契约桩，`ticket.created` 可投递+消费去重 |
+| **CORE-A1** | 状态机：建单/八态流转/非法跃迁 409/幂等 + 查询详情更新；**+ watcher/csat**（R2 归并） | 陈川 | CORE-0 | M2 | `/tickets` POST/GET/{id} GET/PATCH、`/transitions`、`/watchers`、`/csat` |
+| **CORE-A2** | 分派/改派/规则自动分派/升级 | 陈川 | A1 | M2 | `/tickets/{id}/assignments` |
+| **CORE-A3** | SLA 引擎：启动/暂停/恢复/重算 + 扫描器（warning/breached 事件） | 陈川 | A1、CORE-C(策略) | M2 后*（见 §9 O3） | `/tickets/{id}/sla` + 后台扫描 |
+| **CORE-B1** | 评论/内部备注（可见性过滤）+ @提及 + user_reply 自动流转 | 连城 | A1 | M2 | `/tickets/{id}/comments` GET/POST |
+| **CORE-B2** | 附件元数据 + OSS 集成 + 下载授权（预签名 ≤20MB/白名单） | 连城 | A1、OSS 就绪 | M2 后*（见 §9 O3） | `/attachments`、`/download-url` |
+| **CORE-B3** | 查询/列表/过滤/分页 + 时间线/审计 | 连城 | A1 | M2 | `/tickets` 过滤增强、`/timeline` |
+| **CORE-B4** | 关联/合并 | 连城 | A1 | M3 后*（见 §9 O3） | `/tickets/{id}/links` |
+| **CORE-C** | 配置：taxonomy 树 + SLA 策略 + 用户/角色目录 + 0005_seed | 石磊/陈川 | CORE-0(schema) | M2 | `/config/*` 全量 |
+| **CORE-0（写回消费）** | `insight.classification_suggested`→建议态（OQ-4 阈值/开关） | 石磊 | CORE-0(consumer) | M3*（见 §9 O3） | suggestion 落库 + 自动填充开关 |
+| **集成/契约校验（石磊职责，非 §12.1 编号）** | `api-contract-check` 接 CI、跨模块联调、性能基线 P95<500ms、越权红线 | 石磊 | A/B/C | M2/M4 | CI 绿、性能/安全验证 |
 
-### 7.2 里程碑映射（架构 §11.2）
+\* 标星项里程碑系统详设 §12.2 未明确归位，本文给出建议排期并提请架构确认（§9 O3）。
 
-- **M2 MVP**（提单→处理→关闭闭环）：CORE-0(a/b/c) + A1 + A2 + B1 + B3 + C（+ B2 上传/下载、D1）。core 必须就绪以支撑 GW-3 聚合与 WEB-1/2，并产出 `ticket.created` 供 INS-1/6 通知。
-- **M3 智能增强**：CORE-D2（消费分类建议写回）、B4 合并、B2 完善、`suggestion` 暴露给 `TicketDetail`，配合 INS-2/3/4。
-- **M4 加固/发布**：CORE-D3 性能/安全加固、越权用例红线（武安）、OQ-10 软删除/审计/导出预留闭环。
+### 7.2 里程碑映射（系统详设 §12.2）
 
-### 7.3 验收门禁（组织 §11 / 架构 §7）
+- **M2 MVP**（系统详设原文：core = **CORE-0/A1/A2/B1/B3/C**）→ 提单→处理→关闭闭环，支撑 GW-3 聚合与 WEB-1/2，并产出 `ticket.created` 供 INS-1/6 通知。
+- **M3 智能增强**：系统详设 §12.2 未显式列 core 项；本文建议 core 写回消费随 INS-2/3 落 M3，B4 合并配合 M3 看板/通知。
+- **M4 加固/发布**：NFR/安全/性能加固、越权红线、OQ-10 软删除/审计/导出预留闭环。
+
+### 7.3 验收门禁（组织 §11 / 系统详设 §14 / Agent Identity）
+
 - 本域代码由石磊审视合入（in_review→done）。
 - 关键代码（**DB 迁移、契约变更、跨服务集成、SLA/状态机核心、安全相关**）须发起集体检视（≥2 名开发、累计 ≥3 分，含 committer 1 分）后合入。
-- 越权/状态机/幂等用例为必过红线（功能测试 + 安全测试）。
+- 越权/状态机/幂等用例为必过红线（功能 + 安全测试）。
 
 ---
 
-## 8. 依赖关系说明
+## 8. 依赖与阻塞
 
-### 8.1 任务级依赖（DAG）
+### 8.1 任务级 DAG
 
 ```
 契约冻结
-   └─▶ CORE-0a 脚手架 ─┬─▶ CORE-A1 状态机 ─┬─▶ A2 分派
-                       │                    ├─▶ A3 SLA
-   CORE-0b schema ─────┤                    ├─▶ B1 评论(→含 user_reply)
-   CORE-0c 事件骨架 ───┘                    ├─▶ B3 查询/时间线
-                                            ├─▶ B2 附件   ├─▶ B4 合并
-                                            └─▶ D1 watcher/csat
-   CORE-0b ─▶ CORE-C 配置(分类/SLA策略/用户角色) ──(SLA 策略)──▶ A3 计时取策略
-   CORE-0c ─▶ CORE-D2 写回消费
-   全部 ─▶ CORE-D3 集成/契约校验/性能
+   └─▶ CORE-0 骨架(schema/事件/平台) ─┬─▶ CORE-A1 状态机(+watcher/csat) ─┬─▶ A2 分派
+                                      │                                  ├─▶ A3 SLA（取 CORE-C 策略）
+                                      │                                  ├─▶ B1 评论(含 user_reply)
+                                      │                                  ├─▶ B3 查询/时间线
+                                      │                                  ├─▶ B2 附件
+                                      │                                  └─▶ B4 合并
+   CORE-0(consumer) ─▶ 写回消费(suggestion 落库)
+   全部 ─▶ 集成/契约校验/性能（石磊）
 ```
 
 ### 8.2 跨服务/外部依赖
 
 | 依赖 | 类型 | 说明 / 阻塞点 |
 |---|---|---|
-| **契约冻结**（梁栋/CTO/人类） | 前置门禁 | 架构 §12：冻结前不得编码；core 详设可在框架内并行准备 |
-| `openapi/core.yaml` | 契约 | 接口唯一事实源；变更经梁栋批准、秦诺校验 |
-| **gateway**（GW-5） | 上游调用方 | service-jwt 签发 + mTLS + 透传 `X-User-*`；core 只信任 gateway。GW-3 聚合 BFF 依赖 core 契约就绪 |
-| **insight**（INS-1/2/3） | 事件对端 | core 发 `ticket.*` 供 insight 消费；core 消费 `insight.classification_suggested`。**core 事件 schema（§5）是 insight 消费前置** |
-| **PostgreSQL** | 存储 | core OLTP 独享库；迁移用 golang-migrate |
+| **契约冻结**（梁栋） | 前置门禁 | 系统详设 §12.3：冻结前不得编码；core 详设可在框架内并行准备。**core.yaml 当前 `info.version=1.0.0-draft`** → 见 §9 O5 |
+| `src/openapi/core.yaml` | 契约 | 接口唯一事实源；变更经梁栋批准、秦诺 `api-contract-check` 校验 |
+| **gateway**（GW-5/GW-3） | 上游调用方 | service-jwt + mTLS + 透传 `X-User-*`；core 只信任 gateway。GW-3 聚合 BFF 依赖 core 契约就绪 |
+| **insight**（INS-1/2/3/6） | 事件对端 | core 发 `ticket.*` 供 insight 消费；core 消费 `insight.classification_suggested`。**core 事件 schema(§5) 是 insight 消费前置**（系统详设 §12.3） |
+| **PostgreSQL** | 存储 | core OLTP 独享库；golang-migrate |
 | **NATS JetStream** | 事件总线 | Stream `SMARTDESK_EVENTS`；不可用时 outbox 兜底，主流程不阻塞 |
-| **对象存储 S3/MinIO** | 附件 | CORE-B2 预签名上传/下载；不可用仅影响附件，不阻塞建单 |
-| 技能 `db-migration`/`api-contract-check`/`service-scaffold` | 工具 | 生成迁移、校验契约一致、脚手架 |
-
-### 8.3 降级与解耦保证（架构 §8）
-- insight / NATS / OSS 任一不可用，**建单/流转/评论/查询主流程不受影响**：事件先入 outbox 待补投；建议为空、附件功能局部降级。这是 core 对外的核心可靠性承诺（US-2.1 AC4 / NFR）。
+| **对象存储 S3/MinIO** | 附件 | CORE-B2 预签名；不可用仅影响附件 |
+| 技能 `db-migration`/`api-contract-check`/`service-scaffold` | 工具 | 生成迁移、校验契约、脚手架 |
 
 ---
 
-## 9. 开放事项与风险
+## 9. 开放事项（须交架构裁决，标红）
 
-| 项 | 说明 | 处置 |
-|---|---|---|
-| SLA "工作日(bd)"换算 | P2/P3/P4 含「1bd/3bd/5bd」，是否引入工作日历（节假日/工时窗口）影响 due 计算 | 一期按固定 8h/日折算为分钟入种子；工作日历作为 M3 可配增强，**契约不变**（`response_minutes/resolve_minutes` 已是整数分钟） |
-| 流水号 `number` 生成 | 多副本下 org 内唯一且连续 | 用 `sequences` 或 `INSERT ... ON CONFLICT` + 行锁；避免应用层竞态 |
-| `q` 中文全文检索 | PG `simple` 分词对中文较弱 | 一期可用 `pg_trgm`/`zhparser`（部署期定），契约 `q` 不绑实现（OQ-5 前向兼容） |
-| 自动填充阈值（OQ-4） | confidence≥0.85 且开关开启才自动改分类/优先级 | 阈值与开关入 config，默认仅建议态 |
-| reopen 7 天窗口（OQ-13） | 窗口期可配 | core 状态机校验 `now - closed_at ≤ 7d`，窗口入 config |
-| OQ-10 合规 | 软删除/审计不可篡改/导出删除接口 | 表已留 `deleted_at`；导出/删除接口 M4 前补，法务闭环不阻塞 M1/M2 |
+> 下列为本文派生过程中识别、**超出 core 自决权、须架构团队（梁栋）/Committer 委员会裁决**的事项。冲突以系统详设裁决，本文不擅自越权处置。
 
-> 设计争议：编码类争议由后端 Leader（石磊）裁剪；契约/跨服务分歧交架构（梁栋），跨域合入分歧由 Committer 委员会裁定；触及人类决策先提交人类。
+| # | 🔴 开放事项 | 影响 | 本文暂行处置 | 建议裁决方 |
+|---|---|---|---|---|
+| **O1** | 🔴 系统详设 §12.1 未显式点名 **watchers/csat、异步写回消费、集成/契约校验** 的模块归属 | 任务路由与责任边界 | watchers/csat 归并入 CORE-A1；写回消费归 CORE-0(consumer)；集成校验列为石磊跨切职责（不新增 ID，R2） | 梁栋确认归并是否成立 |
+| **O2** | 🔴 系统详设 §4.3 状态机**示意图措辞**（`confirm`/`wait`/复用 `resume`）与 core.yaml `action` enum（`close`/`wait_user`/`resume` 单一化）不一致 | 文档一致性（非语义冲突） | 按「接口以 core.yaml 为准」(系统详设 §0/§5) 实现，并提请系统详设 §4.3 示意图回填同步措辞 | 梁栋（架构）+ 秦诺（契约文档） |
+| **O3** | 🔴 系统详设 §12.2 M2 清单仅含 **0/A1/A2/B1/B3/C**，**A3(SLA)/B2(附件)/B4(合并)/写回消费 未归位任何里程碑** | 排期与 MVP 范围 | A3/B2 暂排 M2 之后、B4/写回排 M3；但 SLA(US-2.5)、附件(US-2.7/OQ-9) 是否属 MVP 闭环存疑 | 梁栋 + 产品确认 MVP 范围 |
+| **O4** | 🔴 SLA「工作日(bd)」换算是否引入工作日历（节假日/工时窗口） | due 计算精度 | 一期按固定 8h/日折算整数分钟入种子；契约 `*_minutes` 不变，工作日历作 M3 可配增强 | 梁栋 + 产品 |
+| **O5** | 🔴 core.yaml `info.version` 仍为 **`1.0.0-draft`**；系统详设称契约已随 D1–D5 落地并通过校验 | 契约冻结状态标识 | 实现按当前 core.yaml 内容进行；建议冻结时将 version 去 `-draft` 以与系统详设 v1.0 冻结状态一致 | 秦诺（契约维护）/ 梁栋 |
+| **O6** | 流水号 `number` 多副本下 org 内唯一/连续生成；`q` 中文全文分词（`simple` 对中文弱，可选 `zhparser`/`pg_trgm`）；OQ-10 软删除/导出删除接口 M4 闭环 | 实现细节/合规 | `number` 用 sequence + 行锁；`q` 部署期定分词器（契约不绑实现，OQ-5）；`deleted_at` 已预留，导出/删除接口 M4 补 | 编码类争议石磊自决；OQ-10 法务/人类在 M4 GA 前闭环 |
+
+> 处置路由（Agent Identity）：编码类争议由后端 Leader（石磊）裁剪；契约/跨服务/里程碑分歧交架构（梁栋）；跨域合入分歧由 Committer 委员会裁定；触及人类决策（OQ-10 合规）先提交人类。
