@@ -6,7 +6,7 @@ info:
     对外统一入口 / 认证 BFF（TypeScript/NestJS）。**所有浏览器流量唯一入口**：完成 JWT 认证 +
     RBAC 鉴权（收口、最小权限）后，聚合转发 core / insight，并对前端拼装视图。未经网关直达
     后端被拒；超过速率阈值返回 429；关键请求埋点审计。身份提供方一期自建账号(JWT)，预留 OIDC 可插拔(OQ-2)。
-    后端契约见 openapi/core.yaml、openapi/insight.yaml；服务间信任见 specs/SmartDesk系统架构设计说明书.md §6/§7。
+    后端契约见 src/openapi/core.yaml、src/openapi/insight.yaml；服务间信任见 specs/SmartDesk系统架构设计说明书.md §6/§7。
 servers:
   - url: https://api.smartdesk.example.com/api/v1
     description: 生产对外入口

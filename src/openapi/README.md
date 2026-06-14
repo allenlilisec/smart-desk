@@ -1,7 +1,7 @@
 # SmartDesk 契约总纲（OpenAPI）
 
 > M1 整体大设计的接口唯一事实源。OpenAPI 3.1。梁栋产出、秦诺维护与一致性校验（`api-contract-check`）。
-> 设计背景与数据模型/事件/信任模型见 [`../specs/SmartDesk系统架构设计说明书.md`](../specs/SmartDesk系统架构设计说明书.md)。
+> 设计背景与数据模型/事件/信任模型见 [`../../specs/SmartDesk系统架构设计说明书.md`](../../specs/SmartDesk系统架构设计说明书.md)。
 >
 > **状态：v1.0-draft，待 CTO 评审 → 人类冻结。契约冻结前各开发团队不得编码。**
 
@@ -32,7 +32,7 @@
 multica skill ... # api-contract-check（详见技能）
 # 本地快速语义校验（可选）
 pip install openapi-spec-validator && \
-  python -c "from openapi_spec_validator import validate; import yaml; [validate(yaml.safe_load(open(f,encoding='utf-8'))) for f in ['openapi/gateway.yaml','openapi/core.yaml','openapi/insight.yaml']]"
+  python -c "from openapi_spec_validator import validate; import yaml; [validate(yaml.safe_load(open(f,encoding='utf-8'))) for f in ['src/openapi/gateway.yaml','src/openapi/core.yaml','src/openapi/insight.yaml']]"
 ```
 
 任何契约变更须经架构（梁栋）批准；秦诺把守跨服务共享 schema（Error/分页/事件）与版本管理。
