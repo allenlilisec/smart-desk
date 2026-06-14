@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: SmartDesk Core API (smartdesk-core)
-  version: 1.0.0-draft
+  version: 1.0.0
   description: >
     工单核心服务内部契约（Go）。覆盖工单全生命周期：建单、查询/列表、状态流转、分派、
     评论/内部备注、附件、关联/合并、SLA、时间线/审计，以及权威配置（分类树、SLA 策略、
