@@ -1,0 +1,3 @@
+[submodule "src/smartdesk-insight"]
+	path = src/smartdesk-insight
+	url = https://github.com/allenlilisec/smartdesk-insight.git
