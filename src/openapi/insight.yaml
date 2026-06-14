@@ -292,6 +292,10 @@ components:
       description: >
         领域事件统一信封（消费自事件总线 NATS JetStream；至少一次+幂等，event_id 去重）。
         与 specs/SmartDesk系统架构设计说明书.md §5.2 一致。此 schema 为事件契约文档化，非 HTTP 端点。
+
+        **分区与顺序（D3 裁定，SUP-43）**：主题 `smartdesk.<domain>.<event>`，Stream `SMARTDESK_EVENTS`，
+        以 `ticket_id` 作分区键（一致性哈希）。保证**单工单事件按 occurred_at 有序**；
+        **跨工单不保证全局序**。消费侧仍须按 event_id 幂等去重（顺序保证不替代幂等）。
       required: [event_id, event_type, occurred_at, ticket_id, version]
       properties:
         event_id: { type: string, format: uuid }

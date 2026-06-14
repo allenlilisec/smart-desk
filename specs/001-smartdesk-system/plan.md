@@ -73,20 +73,13 @@ src/
 
 ---
 
-## 待裁决（@梁栋 契约决策）
-> 按梁栋边界要求：凡涉及**服务边界划分 / 契约字段 / 事件模型**的实质决策，我（秦诺）只起草并列选项，**不自行定稿**，等梁栋裁决再冻结。下列为本轮梳理出的需拍板项；其余决策沿用既有《系统架构设计说明书》与 `src/openapi/*.yaml` 现状（均为梁栋既往产出）。
+## 契约决策 D1–D5（已裁定，2026-06-14 梁栋）
+> 全部裁定详见系统详设 [§13](../SmartDesk系统详细设计与实现说明书.md)。摘要：
 
-1. **建议写回的契约形态**（`insight.classification_suggested` → core）：
-   - 选项 A：core 暴露内部"写回建议"端点（如 `POST /v1/tickets/{id}/suggestion`），insight 主动调用；
-   - 选项 B：core 仅消费事件落库，不暴露写回端点（纯事件驱动）。
-   - 现状：gateway.yaml 有面向前端的 `GET/POST /tickets/{id}/suggestion`（读取/采纳建议），但 core.yaml **未见**对应内部写回端点。需明确写回走"事件消费"还是"内部端点"，并据此补/删契约。
+1. **D1 建议写回 = 纯事件**：不新增 core 同步写回端点；AI 写回经 `insight.classification_suggested` → core 幂等写 `Ticket.suggestion` 字段；读取来源=core 工单详情字段；人工采纳/纠偏走 gateway `POST /tickets/{id}/suggestion`（同步）。
+2. **D2 聚合边界 = A**：gateway 合工单主体，相似/建议懒加载（`/similar`、`/suggestion`）。维持现状契约。
+3. **D3 事件分区/顺序**：`ticket_id` 一致性哈希分区、单工单保序、跨工单不保证全局序、消费侧 `event_id` 幂等 —— 写入 `insight.yaml` DomainEvent 附录。
+4. **D4 `org_id` 不进对外契约**：gateway 从 JWT 注入、服务间 `X-Org-Id` 透传；二期多租户升 `v2` 并行。
+5. **D5 csat/watchers/links 分级**：csat 一期对外补齐（gateway 新增 `GET/POST /tickets/{id}/csat`）；watchers/links 暂不对外，随 M3 落地透出。
 
-2. **gateway 聚合 BFF 的边界**：`GET /tickets/{id}` 详情聚合是否在 gateway 合并 core(工单)+insight(相似/建议)，还是前端分别取？影响 gateway.yaml 响应 schema 与 N+1 风险。建议 A：gateway 合并工单主体，相似/建议走独立懒加载端点（已有 `/tickets/{id}/similar`、`/suggestion`）。
-
-3. **事件主题分区键与顺序保证**：按 `ticket_id` 分区保证单工单有序——确认 JetStream subject 设计（`smartdesk.<domain>.<event>`）与一致性哈希策略是否纳入契约附录。
-
-4. **`org_id` 是否进入对外契约**：一期单组织。选项 A：对外契约不暴露 `org_id`（gateway 从 JWT 注入）；选项 B：预留可选查询位。建议 A（最小暴露）。
-
-5. **CSAT / watchers / links 的对外暴露**：core.yaml 已含 `/tickets/{id}/csat`、`/watchers`、`/links`，但 gateway.yaml 未全部透出到前端。确认一期对外是否需要全部聚合，避免契约面不一致。
-
-> 以上 1/5 为**契约面一致性缺口**（gateway↔core 不完全对齐），属秦诺职责范围内发现、但定稿权在梁栋。我已在系统详设中按"现状 + 建议"标注，未擅自改契约。
+> 本轮契约改动：`gateway.yaml`(+csat 路径与 schema)、`insight.yaml`(+事件分区/顺序附录)；`core.yaml` 无改动。已过 `openapi-spec-validator` 与契约↔契约一致性校验。**无悬置契约决策。**
