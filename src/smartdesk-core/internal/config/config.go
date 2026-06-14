@@ -9,15 +9,17 @@ import (
 
 // Config is the resolved service configuration.
 type Config struct {
-	Addr  string // HTTP listen address
-	OrgID string // default org for multi-tenant placeholder (OQ-7)
+	Addr        string // HTTP listen address
+	OrgID       string // default org for multi-tenant placeholder (OQ-7)
+	DatabaseURL string // postgres DSN; empty selects the in-memory store
 }
 
 // Load reads configuration from the environment.
 func Load() Config {
 	return Config{
-		Addr:  envStr("CORE_HTTP_ADDR", ":8081"),
-		OrgID: envStr("CORE_ORG_ID", "default"),
+		Addr:        envStr("CORE_HTTP_ADDR", ":8081"),
+		OrgID:       envStr("CORE_ORG_ID", "default"),
+		DatabaseURL: envStr("CORE_DATABASE_URL", ""),
 	}
 }
 

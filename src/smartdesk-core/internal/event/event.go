@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/allenlilisec/smart-desk/src/core/internal/id"
+	"github.com/allenlilisec/smart-desk/smartdesk-core/internal/id"
 )
 
 // Event is the unified envelope (§5.2). Subject = smartdesk.<domain>.<event>.

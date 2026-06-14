@@ -15,22 +15,22 @@ import (
 	"strings"
 	"time"
 
-	"github.com/allenlilisec/smart-desk/src/core/internal/domain"
-	"github.com/allenlilisec/smart-desk/src/core/internal/event"
-	"github.com/allenlilisec/smart-desk/src/core/internal/id"
-	"github.com/allenlilisec/smart-desk/src/core/internal/store"
+	"github.com/allenlilisec/smart-desk/smartdesk-core/internal/domain"
+	"github.com/allenlilisec/smart-desk/smartdesk-core/internal/event"
+	"github.com/allenlilisec/smart-desk/smartdesk-core/internal/id"
+	"github.com/allenlilisec/smart-desk/smartdesk-core/internal/store"
 )
 
 // Server wires the store and event publisher into HTTP handlers.
 type Server struct {
-	store *store.Memory
+	store store.Store
 	pub   event.Publisher
 	orgID string
 	now   func() time.Time
 }
 
 // New builds a Server. now may be nil (defaults to time.Now).
-func New(st *store.Memory, pub event.Publisher, orgID string, now func() time.Time) *Server {
+func New(st store.Store, pub event.Publisher, orgID string, now func() time.Time) *Server {
 	if now == nil {
 		now = time.Now
 	}

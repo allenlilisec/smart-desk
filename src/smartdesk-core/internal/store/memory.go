@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/allenlilisec/smart-desk/src/core/internal/domain"
-	"github.com/allenlilisec/smart-desk/src/core/internal/id"
+	"github.com/allenlilisec/smart-desk/smartdesk-core/internal/domain"
+	"github.com/allenlilisec/smart-desk/smartdesk-core/internal/id"
 )
 
 // Memory is the in-memory authoritative store.

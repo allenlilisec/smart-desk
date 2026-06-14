@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/allenlilisec/smart-desk/src/core/internal/event"
-	"github.com/allenlilisec/smart-desk/src/core/internal/httpapi"
-	"github.com/allenlilisec/smart-desk/src/core/internal/store"
+	"github.com/allenlilisec/smart-desk/smartdesk-core/internal/event"
+	"github.com/allenlilisec/smart-desk/smartdesk-core/internal/httpapi"
+	"github.com/allenlilisec/smart-desk/smartdesk-core/internal/store"
 )
 
 type rig struct {

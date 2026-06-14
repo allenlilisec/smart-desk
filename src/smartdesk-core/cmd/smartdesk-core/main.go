@@ -15,10 +15,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/allenlilisec/smart-desk/src/core/internal/config"
-	"github.com/allenlilisec/smart-desk/src/core/internal/event"
-	"github.com/allenlilisec/smart-desk/src/core/internal/httpapi"
-	"github.com/allenlilisec/smart-desk/src/core/internal/store"
+	"github.com/allenlilisec/smart-desk/smartdesk-core/internal/config"
+	"github.com/allenlilisec/smart-desk/smartdesk-core/internal/event"
+	"github.com/allenlilisec/smart-desk/smartdesk-core/internal/httpapi"
+	"github.com/allenlilisec/smart-desk/smartdesk-core/internal/store"
 )
 
 func main() {
@@ -26,7 +26,25 @@ func main() {
 	cfg := config.Load()
 
 	now := time.Now
-	st := store.New(now())
+
+	// Storage: a Postgres DSN selects the durable adapter (migrations applied +
+	// baseline config seeded at boot); empty keeps the in-memory store for
+	// local dev / CI. The HTTP layer is identical either way.
+	var st store.Store
+	if cfg.DatabaseURL != "" {
+		pg, err := store.OpenPostgres(cfg.DatabaseURL, now())
+		if err != nil {
+			logger.Error("postgres init failed", "err", err)
+			os.Exit(1)
+		}
+		defer func() { _ = pg.Close() }()
+		st = pg
+		logger.Info("using postgres store")
+	} else {
+		st = store.New(now())
+		logger.Warn("CORE_DATABASE_URL not set; using in-memory store (non-durable)")
+	}
+
 	pub := event.NewInMemory()
 	srv := httpapi.New(st, pub, cfg.OrgID, now)
 
