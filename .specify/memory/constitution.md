@@ -1,91 +1,136 @@
 <!--
 Sync Impact Report
-- Version change: (none) → 1.0.0  (首次固化)
-- Modified principles: 首次定义，无
-- Added sections: 核心原则 I–VII、附加约束（架构红线 / 安全基线）、质量门禁、治理
-- Removed sections: 无
-- Templates requiring updates:
-  - .specify/templates/plan-template.md  ✅ Constitution Check 槽位与本宪法原则对齐
-  - .specify/templates/spec-template.md  ✅ 不引入实现细节，与原则 I（契约优先）兼容
-  - .specify/templates/tasks-template.md ✅ 任务分组含测试/可观测/版本纪律
-- Follow-up TODOs:
-  - TODO(RATIFICATION_DATE): 本宪法待梁栋评审 + CEO 报备后由人类确认正式批准日；当前为草拟日。
+==================
+Version change: (template) → 1.0.0
+Bump type: MAJOR (initial ratification — first concrete constitution from template)
+
+Modified principles:
+  [PRINCIPLE_1_NAME] → I. 契约优先（Contract-First）
+  [PRINCIPLE_2_NAME] → II. 文档质量门禁（Documentation Quality Gate）
+  [PRINCIPLE_3_NAME] → III. 合入规则与集体检视（Merge Rules & Collective Review）
+  [PRINCIPLE_4_NAME] → IV. 文档单一事实源（Single Source of Truth）
+  [PRINCIPLE_5_NAME] → V. 自顶向下强约束（Top-Down Enforcement）
+
+Added sections:
+  - 附加约束：技术栈与契约边界（Additional Constraints）
+  - 研发流程与质量门禁（Development Workflow & Quality Gates）
+  - Governance
+
+Removed sections: none
+
+Templates requiring updates:
+  ✅ .specify/templates/plan-template.md — Constitution Check 段落与本宪法一致（契约优先 / 自顶向下 / 单一事实源）
+  ✅ .specify/templates/spec-template.md — 范围与需求段落无冲突
+  ✅ .specify/templates/tasks-template.md — 任务分类无冲突
+  ⚠ README.md — 现有 §质量门禁描述与本宪法一致，无需改动；后续如评分线变更需同步
+
+Deferred TODOs: none
 -->
 
-# SmartDesk 项目宪法 / Project Constitution
+# SmartDesk Constitution
 
-> 适用范围：SmartDesk 智能服务平台全部代码仓（`smartdesk-gateway` / `smartdesk-core` / `smartdesk-insight` / `smartdesk-web`）与契约（`src/openapi/*.yaml`）。
-> 本宪法是**质量与协作的最高约束**；与下游设计/任务冲突时以本宪法为准，除非经治理流程修订。
-> 上游依据：[《AI 研发虚拟组织说明书》](../../specs/AI研发虚拟组织说明书.md)（架构红线、§10.3 规范基线、§11 合入门禁）、[PRD v1.0](../../specs/SmartDesk产品需求说明书PRD.md)。
+本宪法是 SmartDesk 项目自顶向下研发流程的最高规定动作与门禁基线，约束从需求到灰度
+上线/回滚全生命周期的所有阶段与所有团队（人类决策者 + AI 虚拟研发组织）。后续每个
+`/specify`、`/clarify`、`/plan`、`/tasks`、`/analyze`、`/implement` 阶段均须遵守本宪法。
 
-## 核心原则 / Core Principles
+## Core Principles
 
-### I. 契约优先（Contract-First，不可协商）
-接口的**唯一事实源**是 `src/openapi/` 下的 OpenAPI 3.1 契约（`gateway.yaml` / `core.yaml` / `insight.yaml`）。
-- 任何跨服务/对外接口 MUST 先在契约中定义并通过评审，**契约冻结前不得编码实现**。
-- 实现 MUST 与契约一致，由契约维护人（秦诺）用 `api-contract-check` 持续校验；漂移即缺陷。
-- 破坏性变更 MUST 升 `v2` 并并行，不得就地破坏 `v1`。
-- **理由**：四仓三语并行，唯有契约先行能让前后端、跨服务解耦推进且可独立验收。
+### I. 契约优先（Contract-First）
 
-### II. 文档单一事实源（Single Source of Truth）
-系统级设计的唯一人类可读事实源是 `specs/SmartDesk系统详细设计与实现说明书.md`。
-- 模块详设 MUST 自该系统详设**自顶向下**派生，不得自下而上倒推为系统详设。
-- 设计与契约/PRD 冲突时，MUST 显式记录冲突并经治理裁决，不得静默偏离。
-- `.specify/` 工作产物保留为生成轨迹，但不替代上述事实源文档。
-- **理由**：避免"文档考古"与多版本漂移；纠偏本轮自下而上的方法论错误。
+OpenAPI 契约是跨模块对接的**唯一接口事实源**。任何跨服务/跨仓的交互必须先有契约、
+后有实现：
 
-### III. 服务边界与架构红线（不可协商）
-系统 MUST 维持 **≥3 微服务（gateway/core/insight）+ 前端 web、4 代码仓、3 门语言（TS/Go/Python）** 的形态。
-- 鉴权 MUST 在 gateway 收口，RBAC 最小权限；后端服务不直接面向浏览器。
-- 服务边界与数据归属以系统详设为准；越界访问他服务数据库或绕过 gateway 即违规。
-- **理由**：组织级架构红线（SUP-9 / 组织说明书），是验收下限，不达标驳回。
+- 契约位于主仓 `src/openapi/`（gateway / core / insight 三份契约总纲），由首席架构
+  (梁栋) 对契约变更拥有最终决定权。
+- **禁止未定义契约即开工**：模块在契约冻结前不得开始接口实现。
+- 实现必须与契约逐字段一致，可通过 `api-contract-check` 技能校验；契约与实现冲突时，
+  以契约为准，实现必须改正。
+- 契约变更须先评审通过并冻结，再通知相关开发团队解阻塞。
 
-### IV. 核心链路可降级、AI 异步不阻塞（不可协商）
-建单等核心链路 MUST 在 AI / 事件总线不可用时仍可成功完成（降级）。
-- 分类/定级/相似等 AI 能力 MUST 经事件总线**异步**计算并**异步写回**，不阻塞主流程。
-- insight 只产出"建议"，落库决策权在 core；AI 故障仅导致建议为空/懒加载降级，不影响业务闭环。
-- **理由**：可用性 ≥99.5% 与建单不中断是产品底线（PRD §7 / NFR）。
+*理由*：微服务架构（≥3 微服务、4 仓、3 语言）下，接口漂移是最大的集成风险；契约先行
+把对接错误前移到设计阶段消除。
 
-### V. 质量门禁与集体检视（不可协商）
-关键代码合入 MUST 满足组织 §11 门禁：**≥2 名开发集体检视、累计评分 ≥3 分（且至少含 1 名 committer）**。
-- 安全关键代码（gateway 认证/RBAC）合入 MUST 加**后端 + 安全双评审**。
-- 越权/鉴权用例、状态机非法跃迁用例 MUST 全过，作为安全/功能红线。
-- 无测试或测试不过的变更不得合入；CI 绿灯是合入前置。
-- **理由**：质量是受控产出而非个人裁量，评分门禁保证集体责任。
+### II. 文档质量门禁（Documentation Quality Gate）
 
-### VI. 幂等、可审计、最终一致
-写操作 MUST 幂等（状态流转/分派/通知支持 `Idempotency-Key`）。
-- 领域事件 MUST 至少一次送达且消费方按 `event_id` 去重幂等。
-- 关键操作 MUST 写不可篡改的时间线/审计（仅追加，普通角色不可改删）。
-- 跨服务一致性以事件为唯一同步通道，读模型最终一致，不共享事务。
-- **理由**：服务台的合规与可追溯要求；异步架构下的正确性基线。
+各阶段产出文档须经**资料团队（文澜）评审签字**方可冻结。
 
-### VII. 安全与隐私基线
-MUST 遵循 OWASP ASVS / Top10：强制鉴权与 RBAC、输入校验、越权防护、传输加密（TLS）、审计日志。
-- PII 最小化；附件下载经鉴权；敏感凭证（密码哈希）仅存于 gateway，core/web/insight 不持有。
-- 留存期/法务合规（OQ-10）MUST 在 M4 灰度放行前由人类/法务闭环（不阻塞 M1/M2）。
-- **理由**：服务台承载员工 PII 与内部数据，安全是放行前置。
+- Specify / Plan / Tasks / 设计说明书等阶段文档，未经资料团队对可读性、合规性、
+  一致性签字，不得进入下一阶段，也不得作为下游开工依据。
+- 签字记录留存在对应 Multica issue 评论中，给出文件路径作为冻结证据。
 
-## 附加约束 / 架构与规范基线
+*理由*：文档是自顶向下流程的承载体；无评审的文档会让歧义沿流程放大，质量门禁把关
+在源头。
 
-- **技术栈**：gateway=TS/NestJS、core=Go、insight=Python/FastAPI、web=TS/Next.js；OLTP=PostgreSQL、对象存储=S3/MinIO、会话/限流=Redis、事件总线=NATS JetStream（RabbitMQ 等价备选，事件 schema 与实现解耦）。
-- **版本与时间**：对外 `/api/v1`、内部 `/v1`；时间 RFC3339 UTC；时长用整数（分钟/秒）避免浮点。
-- **多租户预留**：全业务表含 `org_id`，一期固定单组织、不实现隔离逻辑（OQ-7）。
-- **可观测性**：结构化日志 + `trace_id` 全链路透传、`/metrics`(Prometheus)、`/healthz`+`/readyz`、OpenTelemetry 链路追踪。
-- **规范基线**：对照组织说明书 §10.3（安全/可靠性/性能/代码质量）清单，由质量管理团队维护、测试团队据此验收。
+### III. 合入规则与集体检视（Merge Rules & Collective Review）
 
-## 质量门禁 / Quality Gates（合入前置）
+代码合入须满足评审人数与评分线，关键代码须经集体检视。
 
-1. 契约一致性校验通过（`api-contract-check`），无契约漂移。
-2. 关键代码 ≥2 人检视、累计 ≥3 分含 committer；安全关键加后端+安全双评审。
-3. 单元/集成测试通过，越权/鉴权与状态机非法跃迁用例必过。
-4. 系统详设为唯一事实源；**冻结为受控动作**——草稿先 `in_review`，经资料团队评审、@CEO 报备，未经架构 Leader（梁栋）确认不得宣布冻结。
+- **基线规则**：关键代码须经集体检视——≥2 名开发参与、累计 ≥3 分且其中含
+  committer 1 分，方可合入。
+- **强化规则**：网关认证 / RBAC 等安全敏感代码，额外要求后端 + 安全双评审。
+- **Committer 委员会**（江颜 / 石磊 / 苏睿）统管跨域合入；各实现团队 Leader 兼
+  committer 负责本域代码审视合入。
+- 质量管理团队只做流程治理 / 方法论与红黑事件复盘，**不做代码评审**。
 
-## 治理 / Governance
+*理由*：集体检视与评分线把“谁能合、合什么”制度化，避免单人合入与权限越界，安全
+敏感面额外加固。
 
-- **修订流程**：本宪法的修订（新增/删除/重定义原则）由架构设计团队（Leader 梁栋）提案 → 评审 → 触及人类决策项报 CEO；记录于 Sync Impact Report 并按语义化版本升级。
-- **版本策略**：MAJOR=向后不兼容的治理/原则移除或重定义；MINOR=新增原则或实质扩充；PATCH=措辞/澄清/笔误。
-- **合规检视**：每次 `/plan`、每次关键合入 MUST 执行 Constitution Check；违反项须在计划的 Complexity Tracking 显式论证，否则驳回。
-- **裁决路由**：设计/契约实质争议交架构设计团队（梁栋）裁决；契约总纲与 `gateway.yaml`/`core.yaml`/`insight.yaml` 的最终拍板权在梁栋；触及人类决策的节点先报 CEO。
+### IV. 文档单一事实源（Single Source of Truth）
 
-**版本 / Version**: 1.0.0 | **批准日 / Ratified**: TODO(RATIFICATION_DATE：待梁栋评审 + CEO 报备后由人类确认) | **最近修订 / Last Amended**: 2026-06-14
+**系统级详设是最高事实源**；模块详设与代码不得与之冲突。
+
+- 事实源优先级（高→低）：系统级详细设计 > 契约（接口边界，见原则 I）> 模块详设 > 代码。
+- 模块详设与代码若与系统级详设冲突，以系统级详设为准；需变更系统行为时，先改系统级
+  详设并重新评审冻结，再下沉到模块与代码。
+- 同一事实只允许有一处权威定义，其余位置引用而非复制。
+
+*理由*：多团队并行时，复制的“事实”必然漂移；单一事实源让冲突可判定、可追溯。
+
+### V. 自顶向下强约束（Top-Down Enforcement）
+
+系统 Plan 先于任何模块详设；**禁止“模块各自出详设再合并”的老路**。
+
+- 阶段顺序强约束：系统级 Specify/Plan 冻结后，才能展开模块级详设与实现。
+- 不允许模块团队在系统 Plan 缺位时自行出详设；任何自底向上的“先做后合”都视为违例。
+- 本阶段（P0：脚手架 + Constitution）为先行波次，必须在 P1（系统级 Specify/Plan）之前完成。
+
+*理由*：自底向上合并是历史返工的根因；强制自顶向下让架构决策在分解前定型。
+
+## 附加约束：技术栈与契约边界（Additional Constraints）
+
+- **代码仓与技术栈**（不可随意更改）：`smartdesk-web`（TS + React/Next.js）、
+  `smartdesk-gateway`（TS + Node/NestJS）、`smartdesk-core`（Go）、
+  `smartdesk-insight`（Python/FastAPI）。
+- **契约目录**：跨模块契约统一置于主仓 `src/openapi/`，分 gateway / core / insight 三份。
+- **目录约定**：`specs/` 存系统级文档（PRD、用户故事、系统架构/详设、测试报告），
+  `docs/` 存用户文档，`src/` 存四个仓的业务代码，`.specify/` 存 spec-kit 脚手架与本宪法。
+- **模型绑定**：每个智能体绑定固定模型不可修改；需要不同模型能力时新建智能体，而非
+  改配置。
+
+## 研发流程与质量门禁（Development Workflow & Quality Gates）
+
+- **规定动作**：所有特性走 spec-kit 流程——`/constitution`（一次性基线）→ `/specify`
+  → `/clarify`（按需）→ `/plan` → `/tasks` → `/analyze`（按需）→ `/implement`。
+- **阶段门禁出口条件**：
+  1. 阶段文档经资料团队（文澜）评审签字（原则 II）。
+  2. 跨模块接口已在 `src/openapi/` 契约中定义并冻结（原则 I）。
+  3. 系统级详设已冻结且为最高事实源，下游无冲突（原则 IV）。
+- **合入门禁**：满足原则 III 的评审人数 / 评分线 / 集体检视，安全敏感代码加双评审。
+- **冻结证据**：每个阶段完成须在对应 Multica issue 评论给出文件路径（与 PR 链接，
+  如涉及代码）。
+
+## Governance
+
+- 本宪法**优先于**一切其他研发实践；与本宪法冲突的局部约定一律以本宪法为准。
+- **修订程序**：宪法修订须由架构团队（梁栋）提议、资料团队（文澜）就可读性 / 合规性
+  评审签字后方可生效；修订须在 issue 中留存记录并说明影响范围。
+- **版本策略**（语义化版本）：
+  - MAJOR：原则的删除 / 不兼容重定义、治理规则的破坏性变更。
+  - MINOR：新增原则 / 章节或实质性扩展指引。
+  - PATCH：措辞澄清、错别字、非语义性细化。
+- **合规审查**：所有阶段评审与代码合入须核对本宪法各原则；复杂度 / 例外必须显式说明
+  理由，否则不予通过。
+- 运行期开发指引以本宪法 + 系统级详设为准；`.specify/templates/` 与各 `/speckit-*`
+  技能须与本宪法保持一致，发现漂移即修正。
+
+**Version**: 1.0.0 | **Ratified**: 2026-06-14 | **Last Amended**: 2026-06-14

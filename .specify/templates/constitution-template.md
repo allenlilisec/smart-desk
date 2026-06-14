@@ -1,32 +1,50 @@
-<!--
-Sync Impact Report
-- Version change: [PREV] → [NEW]
-- Modified principles: [...]
-- Added sections: [...]
-- Removed sections: [...]
-- Templates requiring updates: plan-template.md [ ] / spec-template.md [ ] / tasks-template.md [ ]
-- Follow-up TODOs: [...]
--->
+# [PROJECT_NAME] Constitution
+<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
 
-# [PROJECT_NAME] 项目宪法 / Constitution
-
-## 核心原则 / Core Principles
+## Core Principles
 
 ### [PRINCIPLE_1_NAME]
-[PRINCIPLE_1_BODY — 非协商规则 + 理由]
+<!-- Example: I. Library-First -->
+[PRINCIPLE_1_DESCRIPTION]
+<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
 
 ### [PRINCIPLE_2_NAME]
-[PRINCIPLE_2_BODY]
+<!-- Example: II. CLI Interface -->
+[PRINCIPLE_2_DESCRIPTION]
+<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
 
 ### [PRINCIPLE_3_NAME]
-[PRINCIPLE_3_BODY]
+<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
+[PRINCIPLE_3_DESCRIPTION]
+<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
 
-## [ADDITIONAL_SECTION] / 附加约束
+### [PRINCIPLE_4_NAME]
+<!-- Example: IV. Integration Testing -->
+[PRINCIPLE_4_DESCRIPTION]
+<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
 
-[ADDITIONAL_CONSTRAINTS]
+### [PRINCIPLE_5_NAME]
+<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
+[PRINCIPLE_5_DESCRIPTION]
+<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
 
-## 治理 / Governance
+## [SECTION_2_NAME]
+<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
 
-[GOVERNANCE — 修订流程、版本策略、合规检视期望]
+[SECTION_2_CONTENT]
+<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
 
-**版本 / Version**: [CONSTITUTION_VERSION] | **批准日 / Ratified**: [RATIFICATION_DATE] | **最近修订 / Last Amended**: [LAST_AMENDED_DATE]
+## [SECTION_3_NAME]
+<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+
+[SECTION_3_CONTENT]
+<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+
+## Governance
+<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
+
+[GOVERNANCE_RULES]
+<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+
+**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
+<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
