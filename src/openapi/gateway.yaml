@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: SmartDesk Gateway API (smartdesk-gateway)
-  version: 1.0.0-draft
+  version: 1.0.1
   description: >
     对外统一入口 / 认证 BFF（TypeScript/NestJS）。**所有浏览器流量唯一入口**：完成 JWT 认证 +
     RBAC 鉴权（收口、最小权限）后，聚合转发 core / insight，并对前端拼装视图。未经网关直达
@@ -194,7 +194,7 @@ paths:
     parameters: [{ $ref: '#/components/parameters/TicketId' }]
     get:
       tags: [tickets]
-      summary: 查询满意度评价（D5 一期对外；读取来源=core 工单详情 csat 字段，不另开 core GET 端点）
+      summary: 查询满意度评价（D5 一期对外；读取来源=core 工单详情 csat_score/csat_comment/csat_rated_at，映射 CsatView，不另开 core GET 端点）
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/CsatView' } } } }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -369,11 +369,11 @@ components:
         expires_in: { type: integer, description: access 有效秒数 }
     Me:
       type: object
+      description: 当前用户视图（D4：对外契约不暴露 org_id，租户由 gateway 从 JWT 注入下游）
       properties:
         user_id: { type: string, format: uuid }
         username: { type: string }
         display_name: { type: string }
-        org_id: { type: string }
         roles: { type: array, items: { type: string, enum: [requester, agent, lead, manager, admin] } }
 
     # 对外工单视图（与 core 对齐；gateway 不重定义业务字段语义）
@@ -466,6 +466,7 @@ components:
         filename: { type: string }
         content_type: { type: string }
         size_bytes: { type: integer, maximum: 20971520 }
+        comment_id: { type: string, format: uuid, nullable: true, description: 可选，挂到指定评论；透传 core AttachmentInit.comment_id }
     SuggestionDecision:
       type: object
       required: [accepted]
@@ -481,10 +482,13 @@ components:
         comment: { type: string }
     CsatView:
       type: object
+      description: >
+        满意度只读视图（GET /tickets/{id}/csat）。由 core 工单详情附加字段映射，不另开 core GET：
+        score←csat_score、comment←csat_comment、rated_at←csat_rated_at（后两者为 core 1.0.x 附加字段）。
       properties:
-        score: { type: integer, nullable: true, minimum: 1, maximum: 5 }
-        comment: { type: string, nullable: true }
-        rated_at: { type: string, format: date-time, nullable: true }
+        score: { type: integer, nullable: true, minimum: 1, maximum: 5, description: 映射 core Ticket.csat_score }
+        comment: { type: string, nullable: true, description: 映射 core Ticket.csat_comment }
+        rated_at: { type: string, format: date-time, nullable: true, description: 映射 core Ticket.csat_rated_at }
 
     # ---- 对外视图 schema（gateway 不直接 $ref 内部契约文件，定义对外稳定视图）----
     AttachmentView:
@@ -492,6 +496,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         ticket_id: { type: string, format: uuid }
+        comment_id: { type: string, format: uuid, nullable: true, description: 所属评论（若有）；透传 core Attachment.comment_id }
         filename: { type: string }
         content_type: { type: string }
         size_bytes: { type: integer }

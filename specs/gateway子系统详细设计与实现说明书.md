@@ -361,6 +361,28 @@ gateway 不订阅事件总线；异步链路不经 gateway。
 
 ---
 
+## 8. 契约附加修订与 gateway Major 裁定（2026-06-14）
+
+> 来源：core 详设合入前 blocker 路由（SUP-49）；gateway.yaml `1.0.0-draft` → `1.0.1`（纯附加，不破既有消费者）。
+
+### 8.1 Blocker 收口（B1/B2）
+
+| ID | 问题 | 裁定 | gateway.yaml 落地 |
+|---|---|---|---|
+| **B1** | `CsatView` 无法从 core 仅 `csat_score` 拼全 | 认可附加字段路径：core `Ticket`/`TicketDetail` 增 `csat_comment`、`csat_rated_at`（秦诺落 core.yaml）；gateway `CsatView` 三字段映射并文档化 | `CsatView` + GET `/tickets/{id}/csat` summary |
+| **B2** | 附件挂评论 gateway 不可见 | core `AttachmentInit` 已支持 `comment_id`；gateway 对外补齐透传 | `AttachmentInit`/`AttachmentView` 增可选 `comment_id` |
+
+### 8.2 gateway Major 裁定（M1–M4，属 SUP-48 范畴）
+
+| ID | 议题 | 裁定 | 说明 |
+|---|---|---|---|
+| **M1** | 列表/查询参数与 core 过滤口径 | **延后 M2**：gateway 查询参数对齐 core `TicketPage` 过滤集，随 GW-3b 实现一并固化 | 不在本修订改路径 |
+| **M2** | 写端点返回体（201/200 是否回实体） | **延后 M2**：POST 类端点默认 201 空体或 Location；需回视图的写操作在 GW-3b 逐端点评审 | 保持现状 |
+| **M3** | admin 角色入口与 RBAC 矩阵 | **延后 M3**：`/admin/*` 与 `admin` 角色动作矩阵在 GW-3d 与武安越权用例一并闭合 | 契约路径已存在 |
+| **M4** | `Me.org_id` 与系统详设 §13 **D4** 冲突 | **移除**：对外 `Me` 不暴露 `org_id`（D4 A 裁决）；JWT claims 与服务间 `X-Org-Id` 仍保留供 gateway 注入，不进入 BFF 响应体 | `Me` schema 删除 `org_id` |
+
+---
+
 ## 附录 A：配置项（`.env`）
 
 | 变量 | 说明 | 默认 |
