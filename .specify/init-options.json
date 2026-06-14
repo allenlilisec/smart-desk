@@ -1,0 +1,7 @@
+{
+  "branch_numbering": "sequential",
+  "ai_assistant": "claude",
+  "script_shell": "powershell",
+  "initialized_for": "smart-desk",
+  "note": "spec-kit 脚手架（SUP-43 P0）。由架构设计团队（Leader 梁栋 / 契约 秦诺）初始化，用于自顶向下系统级 Constitution → Specify → Clarify → Plan 链路。"
+}
