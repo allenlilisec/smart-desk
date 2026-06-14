@@ -124,7 +124,7 @@ export class AuthService {
       sid: sessionId,
     };
 
-    const accessPayload: JwtPayload = { ...basePayload, jti: accessJti };
+    const accessPayload: JwtPayload = { ...basePayload, jti: accessJti, type: 'access' };
     const refreshPayload = { ...basePayload, jti: refreshJti, type: 'refresh' };
 
     const accessToken = this.jwt.sign(accessPayload, { expiresIn: accessTtl });

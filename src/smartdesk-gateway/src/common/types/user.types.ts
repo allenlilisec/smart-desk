@@ -17,4 +17,5 @@ export interface JwtPayload {
   roles: Role[];
   sid: string;
   jti: string;
+  type?: 'access' | 'refresh';
 }

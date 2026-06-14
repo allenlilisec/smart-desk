@@ -22,6 +22,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload): Promise<AuthenticatedUser> {
+    if (payload.type !== 'access') {
+      throw new UnauthorizedException({
+        code: 'UNAUTHORIZED',
+        message: 'Invalid access token',
+      });
+    }
+
     const blacklisted = await this.redis.exists(`blacklist:access:${payload.jti}`);
     if (blacklisted) {
       throw new UnauthorizedException({

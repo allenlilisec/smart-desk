@@ -76,6 +76,18 @@ describe('Gateway auth & RBAC (e2e)', () => {
       .expect(401);
   });
 
+  it('refresh token cannot be used as Bearer access token', async () => {
+    const login = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ username: 'requester1', password: 'req123' })
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${login.body.refresh_token}`)
+      .expect(401);
+  });
+
   it('invalid login returns 401 without leaking account existence', async () => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
