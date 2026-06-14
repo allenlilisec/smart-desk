@@ -17,6 +17,8 @@
 | §5 跨服务 | 前端仅同步 REST；事件经 BFF 投影，不直连 NATS | 对齐 §9 降级语义 |
 | §7 里程碑 | WEB-1~5 拆到迭代与 M2/M3/M4；§7.3 验收标准引用 §10 规范基线 | 对齐 §12.1/§12.2；修订 R1（资料初审沈思） |
 | §10（新增） | 验收标准规范基线（安全/性能/可用性/代码质量） | 补 §10.3 要求的规范基线声明（修订 R1） |
+| §3 存储 | 刷新令牌存储策略更新为 OQ-W2 方案 A（HttpOnly Cookie，同源代理） | 梁栋架构裁定 OQ-W2（2026-06-15） |
+| §9 开放事项 | 回写 OQ-W1/W2/W3 架构裁决结论 | 梁栋架构裁定（2026-06-15），合入前收尾 |
 
 ---
 
@@ -144,7 +146,7 @@ web **无业务数据库**。仅以下客户端侧存储：
 | 存储 | 介质 | 内容 | TTL/策略 |
 |---|---|---|---|
 | 访问令牌 | `sessionStorage`（优先）或内存 | `access_token` | 随 `expires_in`；不落 `localStorage`（降低 XSS 持久化风险） |
-| 刷新令牌 | HttpOnly Cookie（gateway Set-Cookie，若 BFF 同源代理）**或** `sessionStorage`（跨域部署时） | `refresh_token` | 登出清除；刷新失败→强制重登 |
+| 刷新令牌 | **HttpOnly Cookie**（gateway `Set-Cookie; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth`；Next.js `rewrites` 同源代理，**OQ-W2 架构裁定方案 A**） | `refresh_token` | 登出清除；刷新失败→强制重登 |
 | 用户快照 | TanStack Query 缓存 | `GET /auth/me` 响应 | staleTime 5min；登出 invalidate |
 | UI 偏好 | `localStorage` | 列宽、主题、最近筛选 | 非敏感；可清除 |
 | 草稿 | `sessionStorage` | 提单未提交草稿 | 会话级 |
@@ -381,9 +383,9 @@ smartdesk-web/
 
 | # | 事项 | 建议 | 裁决方 | 优先级 |
 |---|---|---|---|---|
-| OQ-W1 | 多角色用户登录后默认落地页优先级 | 见 §1.2 建议优先级表 | 产品/梁栋 | 低 |
-| <span style="color:red">OQ-W2</span> | <span style="color:red">refresh_token 存储：跨域部署时 gateway 能否 Set-Cookie 同源代理</span> | <span style="color:red">方案 A：web 反向代理 `/api` 同源；方案 B：sessionStorage 存 refresh（安全性较弱）</span> | <span style="color:red">架构梁栋 + 关山</span> | <span style="color:red">高（阻塞 WEB-0 安全基线）</span> |
-| OQ-W3 | lead「本组」范围一期是否简化为全 agent 可见 | 与 gateway §4.4 列表收敛一致 | 梁栋 | 中 |
+| OQ-W1 | 多角色用户登录后默认落地页优先级 | ✅ **已裁定（梁栋 2026-06-15）**：采纳 §1.2 优先级表 `admin > manager > lead > agent > requester`；产品可配，一期默认即可。 | 产品/梁栋 | 低 |
+| OQ-W2 | refresh_token 存储：跨域部署时 gateway 能否 Set-Cookie 同源代理 | ✅ **已裁定（梁栋 2026-06-15）**：**方案 A（冻结）**：web 通过 Next.js `rewrites`/`middleware` 将 `/api/v1/*` 同源反代至 gateway；`refresh_token` 由 gateway `Set-Cookie`（`HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth`）；`access_token` 存内存或 `sessionStorage`（不落 `localStorage`）；**禁止**方案 B（sessionStorage 存 refresh）上生产。 | 架构梁栋 + 关山 | 高（已解） |
+| OQ-W3 | lead「本组」范围一期是否简化为全 agent 可见 | ✅ **已裁定（梁栋 2026-06-15）**：一期跟随 gateway §4.4「全组可见」；web **不做**二次组过滤，仅渲染 gateway 收敛后的列表。 | 梁栋 | 中 |
 | OQ-W4 | 通知实时性：M2 轮询间隔是否 30s | 可接受则 M2 不扩契约 | 产品 | 低 |
 | OQ-W5 | 看板图表库（ECharts vs Recharts） | 团队偏好 Recharts（React 原生） | 前端内部 | 低 |
 
