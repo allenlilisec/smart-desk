@@ -30,31 +30,57 @@ paths:
     post:
       tags: [auth]
       summary: 登录（US-1.1）
-      description: 有效凭证→签发 JWT(access+refresh)；无效→401 且不下发令牌，错误提示不泄露账号是否存在。
+      description: >
+        有效凭证→签发 JWT(access+refresh)；无效→401 且不下发令牌，错误提示不泄露账号是否存在。
+        **OQ-W2 安全裁决（2026-06-15）**：refresh_token 通过 `Set-Cookie: sd_rt=<token>; HttpOnly; Secure;
+        SameSite=Strict; Path=/api/v1/auth` 下发，不在 JSON 响应体中返回。
+        前端 JS 不可读取该 Cookie；刷新请求由浏览器自动携带。
       security: []
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/LoginRequest' } } }
       responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TokenPair' } } } }
+        '200':
+          description: OK
+          headers:
+            Set-Cookie:
+              description: >
+                `sd_rt=<refresh_token>; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth; Max-Age=604800`
+                （7天，仅 /api/v1/auth 路径可用，JS 不可读）
+              schema: { type: string }
+          content: { application/json: { schema: { $ref: '#/components/schemas/TokenPair' } } }
         '401': { description: 凭证无效, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '429': { $ref: '#/components/responses/RateLimited' }
   /auth/refresh:
     post:
       tags: [auth]
       summary: 刷新令牌（US-1.1 AC3）
+      description: >
+        **OQ-W2 安全裁决（2026-06-15）**：浏览器自动携带 `sd_rt` HttpOnly Cookie，
+        无需（且不接受）在请求体中传递 refresh_token。
+        刷新成功后轮换 refresh_token（旧 Cookie 失效），并通过 `Set-Cookie` 下发新 Cookie。
       security: []
-      requestBody:
-        required: true
-        content: { application/json: { schema: { type: object, required: [refresh_token], properties: { refresh_token: { type: string } } } } }
       responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TokenPair' } } } }
-        '401': { description: 刷新令牌失效, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '200':
+          description: OK
+          headers:
+            Set-Cookie:
+              description: 轮换后的新 refresh_token Cookie（属性同登录）
+              schema: { type: string }
+          content: { application/json: { schema: { $ref: '#/components/schemas/TokenPair' } } }
+        '401': { description: 刷新令牌无效/过期，需重新登录, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /auth/logout:
     post:
       tags: [auth]
       summary: 登出（会话失效，后续请求 401，US-1.1 AC4）
-      responses: { '204': { description: OK } }
+      description: 服务端吊销 refresh_token（Redis 删除），并通过 Set-Cookie 将 sd_rt Cookie 清除（Max-Age=0）。
+      responses:
+        '204':
+          description: OK
+          headers:
+            Set-Cookie:
+              description: '`sd_rt=; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth; Max-Age=0`（清除 Cookie）'
+              schema: { type: string }
   /auth/me:
     get:
       tags: [auth]
@@ -362,9 +388,10 @@ components:
         password: { type: string, format: password }
     TokenPair:
       type: object
+      description: >
+        仅含 access_token；refresh_token 通过 HttpOnly Cookie（sd_rt）下发，不在响应体中出现（OQ-W2）。
       properties:
         access_token: { type: string }
-        refresh_token: { type: string }
         token_type: { type: string, default: Bearer }
         expires_in: { type: integer, description: access 有效秒数 }
     Me:
