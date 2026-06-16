@@ -1,0 +1,4 @@
+﻿smartdesk-core:alpha-mvp
+smartdesk-gateway:alpha-mvp
+smartdesk-insight:alpha-mvp
+smartdesk-web:alpha-mvp

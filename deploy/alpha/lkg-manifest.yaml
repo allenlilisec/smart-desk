@@ -1,0 +1,42 @@
+# Alpha/Beta LKG 版本清单（SUP-213）
+# 每次发布前由白帆维护；回滚时切换 IMAGE_TAG 至 lkg_tag
+
+release: alpha-mvp-2026-06-16
+recorded_at: "2026-06-16T09:30:00Z"
+recorded_by: 万全
+
+lkg_tag: alpha-mvp-lkg
+current_tag: alpha-mvp
+
+images:
+  - service: gateway
+    image: smartdesk-gateway:alpha-mvp
+    git_repo: https://github.com/allenlilisec/smartdesk-gateway
+    git_ref: deploy/alpha-compose
+  - service: core
+    image: smartdesk-core:alpha-mvp
+    git_repo: https://github.com/allenlilisec/smartdesk-core
+    git_ref: wanquan/sup210-dockerfile
+  - service: insight
+    image: smartdesk-insight:alpha-mvp
+    git_repo: https://github.com/allenlilisec/smartdesk-insight
+    git_ref: deploy/alpha-compose
+  - service: web
+    image: smartdesk-web:alpha-mvp
+    git_repo: https://github.com/allenlilisec/smartdesk-web
+    git_ref: deploy/alpha-compose
+
+config_snapshot:
+  compose: deploy/alpha/docker-compose.yml
+  env_example_hash: "see deploy/alpha/.env.example"
+
+middleware:
+  postgres: postgres:16-alpine
+  redis: redis:7-alpine
+  nats: nats:2.10-alpine
+  minio: minio/minio:RELEASE.2024-12-18T13-15-44Z
+
+rollback:
+  strategy: S1  # 仅切镜像 tag，不执行 down 迁移
+  compose_cmd: deploy/alpha/scripts/rollback-dry-run.ps1
+  rto_target_minutes: 15
