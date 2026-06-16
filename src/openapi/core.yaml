@@ -217,6 +217,8 @@ paths:
       parameters: [{ $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/PageSize' }]
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TimelinePage' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /tickets/{id}/watchers:
     parameters: [{ $ref: '#/components/parameters/TicketId' }]
@@ -278,7 +280,9 @@ paths:
       tags: [config]
       summary: 配置 SLA 策略（admin；可配数值，不改契约形态）
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SlaPolicy' } } } }
-      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SlaPolicy' } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SlaPolicy' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   /config/users:
     get:
@@ -290,7 +294,9 @@ paths:
       tags: [config]
       summary: 创建用户并授角色（admin）
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UserCreate' } } } }
-      responses: { '201': { description: 已创建, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } } }
+      responses:
+        '201': { description: 已创建, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   /config/users/{userId}/roles:
     parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
@@ -300,7 +306,9 @@ paths:
       requestBody:
         required: true
         content: { application/json: { schema: { type: object, properties: { roles: { type: array, items: { $ref: '#/components/schemas/RoleCode' } } }, required: [roles] } } }
-      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   /healthz: { get: { tags: [config], summary: liveness, security: [], responses: { '200': { description: OK } } } }
   /readyz:  { get: { tags: [config], summary: readiness（含 DB/总线依赖）, security: [], responses: { '200': { description: OK }, '503': { description: 未就绪 } } } }
