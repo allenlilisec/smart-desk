@@ -144,7 +144,7 @@ paths:
     parameters: [{ $ref: '#/components/parameters/TicketId' }]
     get:
       tags: [comments]
-      summary: 评论列表（内部备注按 X-User-Roles 过滤；requester 不返回 internal，US-2.4 AC2）
+      summary: 评论列表（内部备注按已验签 roles claim 过滤；requester 不返回 internal，US-2.4 AC2）
       parameters: [{ $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/PageSize' }]
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/CommentPage' } } } }
