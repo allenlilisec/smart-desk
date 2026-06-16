@@ -75,6 +75,11 @@ docker compose down
 docker compose down -v
 ```
 
+## 安全测试接入（SUP-212）
+
+- 测试接入信息（URL / 内网地址 / 账号）：[`test-access-info.md`](test-access-info.md)
+- core 隔离硬门禁实测：`./scripts/core-isolation-verify.ps1`（输出可归档为 `core-isolation-evidence.txt`）
+
 ## 回滚参考
 
 镜像 tag 回退流程见 [`specs/回滚预案.md`](../../specs/回滚预案.md) §4.4。
