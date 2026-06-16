@@ -1,0 +1,196 @@
+# SmartDesk 金丝雀双轨预发环境（compose 副本比近似流量分割）
+# 对齐 specs/灰度发布策略.md C1/C2/C3 与 specs/回滚预案.md §4.4
+#
+# 用法：
+#   docker compose -f deploy/docker-compose.canary.yml up -d
+#   ./deploy/scripts/canary-stage.sh c1   # 5%  (19:1)
+#   ./deploy/scripts/canary-stage.sh c2   # 25% (3:1)
+#   ./deploy/scripts/canary-stage.sh c3   # 100% canary
+
+name: smartdesk-canary
+
+x-service-common: &service-common
+  restart: unless-stopped
+  networks: [smartdesk]
+
+x-labels: &prom-labels
+  labels:
+  - "prometheus.scrape=true"
+
+services:
+  # ── 共享依赖 ──────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: smartdesk
+      POSTGRES_PASSWORD: smartdesk
+      POSTGRES_DB: smartdesk
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smartdesk"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [smartdesk]
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [smartdesk]
+
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js", "-m", "8222"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [smartdesk]
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    networks: [smartdesk]
+
+  # ── core 双轨 ─────────────────────────────────────────────
+  core-stable:
+    <<: *service-common
+    build:
+      context: ./healthz-stub
+    environment:
+      SERVICE: core
+      VERSION: stable
+      PORT: "8080"
+    labels:
+      - "version=stable"
+      - "service=core"
+      - "prometheus.scrape=true"
+    networks: [smartdesk]
+
+  core-canary:
+    <<: *service-common
+    build:
+      context: ./healthz-stub
+    environment:
+      SERVICE: core
+      VERSION: canary
+      PORT: "8080"
+    labels:
+      - "version=canary"
+      - "service=core"
+      - "prometheus.scrape=true"
+    networks: [smartdesk]
+
+  # ── insight 双轨 ──────────────────────────────────────────
+  insight-stable:
+    <<: *service-common
+    build:
+      context: ./healthz-stub
+    environment:
+      SERVICE: insight
+      VERSION: stable
+      PORT: "8080"
+    labels:
+      - "version=stable"
+      - "service=insight"
+      - "prometheus.scrape=true"
+    networks: [smartdesk]
+
+  insight-canary:
+    <<: *service-common
+    build:
+      context: ./healthz-stub
+    environment:
+      SERVICE: insight
+      VERSION: canary
+      PORT: "8080"
+    labels:
+      - "version=canary"
+      - "service=insight"
+      - "prometheus.scrape=true"
+    networks: [smartdesk]
+
+  # ── gateway 双轨（nginx 入口权重分流）────────────────────
+  gateway-stable:
+    <<: *service-common
+    build:
+      context: ./healthz-stub
+    environment:
+      SERVICE: gateway
+      VERSION: stable
+      PORT: "3000"
+    labels:
+      - "version=stable"
+      - "service=gateway"
+      - "prometheus.scrape=true"
+    networks: [smartdesk]
+
+  gateway-canary:
+    <<: *service-common
+    build:
+      context: ./healthz-stub
+    environment:
+      SERVICE: gateway
+      VERSION: canary
+      PORT: "3000"
+    labels:
+      - "version=canary"
+      - "service=gateway"
+      - "prometheus.scrape=true"
+    networks: [smartdesk]
+
+  # ── web 双轨 ──────────────────────────────────────────────
+  web-stable:
+    <<: *service-common
+    build:
+      context: ./healthz-stub
+    environment:
+      SERVICE: web
+      VERSION: stable
+      PORT: "3000"
+    labels:
+      - "version=stable"
+      - "service=web"
+    networks: [smartdesk]
+
+  web-canary:
+    <<: *service-common
+    build:
+      context: ./healthz-stub
+    environment:
+      SERVICE: web
+      VERSION: canary
+      PORT: "3000"
+    labels:
+      - "version=canary"
+      - "service=web"
+    networks: [smartdesk]
+
+  # ── 入口 nginx（权重路由）────────────────────────────────
+  ingress:
+    build:
+      context: ./nginx
+    depends_on:
+      - gateway-stable
+      - gateway-canary
+      - web-stable
+      - web-canary
+    ports:
+      - "${INGRESS_PORT:-19080}:80"
+    environment:
+      GATEWAY_STABLE_WEIGHT: "${GATEWAY_STABLE_WEIGHT:-19}"
+      GATEWAY_CANARY_WEIGHT: "${GATEWAY_CANARY_WEIGHT:-1}"
+      WEB_STABLE_WEIGHT: "${WEB_STABLE_WEIGHT:-19}"
+      WEB_CANARY_WEIGHT: "${WEB_CANARY_WEIGHT:-1}"
+    networks: [smartdesk]
+
+networks:
+  smartdesk:
+    driver: bridge
