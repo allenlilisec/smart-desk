@@ -1,0 +1,50 @@
+# Recording Rules 占位 — Alpha/Beta MVP
+# 启用 monitoring profile 后由 Prometheus 加载；实现侧指标名对齐 specs/发布监控告警基线.md §3
+#
+# 占位说明：当前四服务 MVP 可能尚未暴露全部业务指标端点；
+# 本文件定义目标 PromQL，待 /metrics 就绪后取消注释并纳入告警规则。
+
+groups:
+  - name: smartdesk_golden_signals_placeholder
+    interval: 30s
+    rules:
+      # --- 黄金信号：QPS ---
+      # - record: smartdesk:gateway_qps
+      #   expr: sum(rate(http_requests_total{service="gateway"}[5m]))
+
+      # --- 黄金信号：错误率 ---
+      # - record: smartdesk:gateway_error_rate
+      #   expr: |
+      #     sum(rate(http_requests_total{service="gateway",status_code=~"5.."}[5m]))
+      #     /
+      #     sum(rate(http_requests_total{service="gateway"}[5m]))
+
+      # --- 黄金信号：P95 延迟 ---
+      # - record: smartdesk:gateway_p95_latency_seconds
+      #   expr: |
+      #     histogram_quantile(0.95,
+      #       sum(rate(http_request_duration_seconds_bucket{service="gateway"}[5m])) by (le))
+
+      # --- 业务 SLI-01：建单成功率（占位）---
+      # - record: smartdesk:sli01_ticket_create_success_rate
+      #   expr: |
+      #     sum(rate(core_tickets_created_total{result="success"}[5m]))
+      #     /
+      #     sum(rate(http_requests_total{service="gateway",route="/tickets",method="POST"}[5m]))
+
+      # --- 业务 SLI-02：鉴权失败率（占位）---
+      # - record: smartdesk:sli02_auth_failure_rate
+      #   expr: |
+      #     sum(rate(gateway_auth_failures_total[5m]))
+      #     /
+      #     sum(rate(gateway_auth_attempts_total[5m]))
+
+      # --- 业务 SLI-03：事件消费滞后（占位）---
+      # - record: smartdesk:sli03_consumer_lag_max_seconds
+      #   expr: max(core_event_consumer_lag_seconds, insight_event_consumer_lag_seconds)
+
+      - record: smartdesk:placeholder_info
+        expr: vector(1)
+        labels:
+          status: "alpha_mvp_metrics_pending"
+          doc: "specs/发布监控告警基线.md"

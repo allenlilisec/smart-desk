@@ -75,6 +75,31 @@ docker compose down
 docker compose down -v
 ```
 
-## 回滚参考
+## 监控基线与探针
 
-镜像 tag 回退流程见 [`specs/回滚预案.md`](../../specs/回滚预案.md) §4.4。
+对齐 [`specs/发布监控告警基线.md`](../../specs/发布监控告警基线.md)，详见 [`monitoring/README.md`](monitoring/README.md)。
+
+```bash
+# 四服务 healthz/readyz 探活
+./scripts/health-probe.sh        # 或 health-probe.ps1
+
+# 可选：Prometheus + Blackbox（黄金信号占位）
+docker compose -f docker-compose.yml -f docker-compose.monitoring.yml --profile monitoring up -d
+```
+
+告警联系人链：[`monitoring/alert-contacts.md`](monitoring/alert-contacts.md)
+
+## 回滚与 LKG
+
+| 路径 | 说明 |
+|---|---|
+| [`lkg/lkg-template.yaml`](lkg/lkg-template.yaml) | LKG 版本清单模板（[`回滚预案.md`](../../specs/回滚预案.md) §3.1） |
+| [`lkg/lkg-alpha-mvp.yaml`](lkg/lkg-alpha-mvp.yaml) | 当前 Alpha MVP 快照 |
+| [`scripts/rollback-dry-run.sh`](scripts/rollback-dry-run.sh) | 一键回滚 dry-run（停服→切 LKG→探活） |
+| [`records/`](records/) | dry-run 演练记录归档 |
+
+```bash
+./scripts/rollback-dry-run.sh    # 或 rollback-dry-run.ps1
+```
+
+镜像 tag 回退流程亦见 [`specs/回滚预案.md`](../../specs/回滚预案.md) §4.4。

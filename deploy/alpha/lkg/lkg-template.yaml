@@ -1,0 +1,42 @@
+# LKG（Last Known Good）版本清单模板
+# 对齐 specs/回滚预案.md §3.1 — 每次晋升 LKG 前由白帆在发布记录中冻结并复制本模板填写
+
+lkg:
+  recorded_at: "<RFC3339>"
+  release_tag: "<semver-or-milestone-tag>"
+  environment: "alpha-beta"
+  images:
+    gateway: "smartdesk-gateway:<tag>"
+    core: "smartdesk-core:<tag>"
+    insight: "smartdesk-insight:<tag>"
+    web: "smartdesk-web:<tag>"
+  # compose 本地构建时记录 image digest（docker inspect --format '{{.Id}}'）
+  image_digests:
+    gateway: "<sha256>"
+    core: "<sha256>"
+    insight: "<sha256>"
+    web: "<sha256>"
+  config:
+    gateway_config_hash: "<sha256>"
+    insight_config_hash: "<sha256>"
+    web_env_hash: "<sha256>"
+    compose_env_hash: "<sha256>"  # deploy/alpha/.env
+  database:
+    core_schema_version: "<migrate_version>"   # e.g. "0004"
+    insight_schema_version: "<alembic_rev>"
+  dependencies:
+    postgresql: "16.x"
+    redis: "7.x"
+    nats: "2.10.x-jetstream"
+    minio: "RELEASE.2024-12-18"
+  git:
+    smart_desk_main: "<commit-sha>"
+    smartdesk_gateway: "<commit-sha>"
+    smartdesk_core: "<commit-sha>"
+    smartdesk_insight: "<commit-sha>"
+    smartdesk_web: "<commit-sha>"
+  notes: |
+    发布前检查项：
+    - 四服务 /healthz + gateway/core/insight /readyz 探活通过
+    - 回滚 dry-run 记录归档
+    - 白帆签字确认

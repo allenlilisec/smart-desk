@@ -1,0 +1,71 @@
+# Alpha/Beta Prometheus 采集配置（可选 monitoring profile）
+# 对齐 specs/发布监控告警基线.md §2–§3
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # --- 四服务 HTTP 指标（黄金信号数据源）---
+  - job_name: gateway
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["gateway:3000"]
+        labels:
+          service: gateway
+
+  - job_name: core
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["core:8081"]
+        labels:
+          service: core
+
+  - job_name: insight
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["insight:8000"]
+        labels:
+          service: insight
+
+  # web 无 /metrics 硬性要求；健康由 blackbox 探测
+
+  # --- 对外黑盒探针（SLI-04 入口可用性）---
+  - job_name: blackbox-gateway
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://gateway:3000/healthz
+          - http://gateway:3000/readyz
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115
+
+  - job_name: blackbox-web
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://web:3000/healthz
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115
+
+  # --- 基础设施（辅助，不替代服务 readyz）---
+  - job_name: nats
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["nats:8222"]
+        labels:
+          component: nats

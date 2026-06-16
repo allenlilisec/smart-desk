@@ -1,0 +1,34 @@
+# 可选 Prometheus + Blackbox Exporter（--profile monitoring）
+# 用法: docker compose -f docker-compose.yml -f docker-compose.monitoring.yml --profile monitoring up -d
+
+services:
+  blackbox:
+    image: prom/blackbox-exporter:v0.25.0
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/blackbox/blackbox.yml"
+    volumes:
+      - ./monitoring/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    networks:
+      - smartdesk-internal
+      - smartdesk-edge
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/golden-signals-placeholder.yml:/etc/prometheus/rules/golden-signals-placeholder.yml:ro
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    networks:
+      - smartdesk-internal
+      - smartdesk-edge
+    depends_on:
+      gateway:
+        condition: service_healthy

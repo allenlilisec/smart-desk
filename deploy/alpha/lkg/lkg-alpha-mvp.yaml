@@ -1,0 +1,44 @@
+# Alpha/Beta MVP 初始 LKG 快照
+# 编制：万全 | 日期：2026-06-16 | issue: SUP-213
+# 说明：compose 本地 build 形态；晋升正式 LKG 前须由白帆更新 tag/digest 并签字
+
+lkg:
+  recorded_at: "2026-06-16T09:30:00Z"
+  release_tag: "alpha-mvp-2026-06-16"
+  environment: "alpha-beta"
+  images:
+    gateway: "smartdesk-alpha-gateway:local"
+    core: "smartdesk-alpha-core:local"
+    insight: "smartdesk-alpha-insight:local"
+    web: "smartdesk-alpha-web:local"
+  image_digests:
+    gateway: "sha256:f8c71210d534bbd32339e7169df4f1013bb2245d979aca4360b534563bb1835a"
+    core: "sha256:228124b757abd4fb54852e7f57f07b0ef143742d7e21132888da944a5e994fb5"
+    insight: "sha256:2fce392a93a02a3f73e212256a06c65a7a33f213bbe8b88ee2d67fde4b759881"
+    web: "sha256:c0d2191c8e6c0fca56a9d2ce450cc602cfedeafd98bc3421aaabf925c77ba4b1"
+  config:
+    gateway_config_hash: "<fill-from-.env>"
+    insight_config_hash: "n/a-compose-env"
+    web_env_hash: "<fill-from-.env>"
+    compose_env_hash: "<fill-from-.env>"
+  database:
+    core_schema_version: "embedded-in-core-image"
+    insight_schema_version: "embedded-in-insight-image"
+  dependencies:
+    postgresql: "16-alpine"
+    redis: "7-alpine"
+    nats: "2.10-alpine"
+    minio: "RELEASE.2024-12-18T13-15-44Z"
+  git:
+    smart_desk_main: "a313612"
+    smartdesk_gateway: "43d2c6b"
+    smartdesk_core: "9febb26"
+    smartdesk_insight: "0906597"
+    smartdesk_web: "17cd5f7"
+  rollback:
+    order: ["web", "gateway", "insight", "core"]
+    rto_target_minutes: 15
+    dry_run_record: "records/rollback-dry-run-2026-06-16.md"
+  notes: |
+    Alpha/Beta 安全测试环境：全量部署，无金丝雀。
+    回滚 = 停服 → 切回本清单 digest/tag → 按序 up --no-deps → 探活冒烟。
