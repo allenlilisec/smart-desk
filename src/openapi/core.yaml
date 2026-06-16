@@ -217,6 +217,7 @@ paths:
       parameters: [{ $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/PageSize' }]
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TimelinePage' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   /tickets/{id}/watchers:
     parameters: [{ $ref: '#/components/parameters/TicketId' }]
