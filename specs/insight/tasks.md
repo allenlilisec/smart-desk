@@ -6,10 +6,11 @@
 **派生自**: 系统详设 v1.0（§2.2/§5/§6/§12）；PRD US-3/US-4/US-6；insight 详设 INS-0~7
 **编制**: 苏睿（智能服务团队 Leader / Committer）　|　日期：2026-06-15
 
-> 本清单由 spec-kit `/tasks` 从**已冻结**的 insight 详设 v1.0 自顶向下派生，依赖有序、每块可独立交付/测试。任务 ID 沿用详设 §6 的 **INS-
-*** 体系；`Tn` 为本清单内的细粒度执行编号。`[P]` = 不同文件、无相互依赖、可并行。`[INS-x]` = 归属工作块，`[USn]` = 对应用户故事。
+> 本清单由 spec-kit `/tasks` 从**已冻结**的 insight 详设 v1.0 自顶向下派生，依赖有序、每块可独立交付/测试。任务 ID 沿用详设 §6 的 **INS-* 体系**（详设 §12.1 仅定义 INS-1~7，**INS-8 为本清单针对 M4 加固新增的编号，详设 INS 体系未列入**）；`Tn` 为本清单内的细粒度执行编号。`[P]` = 不同文件、无相互依赖、可并行。`[INS-x]` = 归属工作块，`[USn]` = 对应用户故事。
 >
 > **协作分工**：苏睿负责 INS-0~5（算法/检索/统计/骨架），杨达负责 INS-6/7（通知/集成）；对外接口须符合 `insight.yaml`。
+>
+> **命名口径说明**：文件命名遵循详设 §2.3 规范（单数形式）：`app/api/routers/notification.py`、`app/api/routers/policy.py`、`app/services/notification.py`、`app/services/policy.py`。现状代码中存在复数形式（`notifications.py`、`policies.py`），Phase 1 T001 迁移时统一为单数形式，便于检视追溯。
 
 ---
 
@@ -40,7 +41,8 @@
 | # | 漂移 | 影响 | 处置 |
 |---|---|---|---|
 | D-1 | 当前 `app/routers/notifications.py` 路径为 `/notifications`，与 `insight.yaml` 一致；但 `NotificationStatus` enum 含 `retrying`，实际服务未区分 retrying 与 failed | 状态语义漂移 | **INS-6 实现时**统一：`email` 通道发送中=retrying，最终失败=failed，死信记录后返回 failed |
-| D-2 | `app/schemas.py` 已定义 `DomainEvent` 与 payload 子模型，但 `insight.classification_suggested` payload 未固化 | 写回事件格式漂移 | **INS-1 实现时**按 OQ-4 嵌套 `PredictResult` 发布，与 `core.yaml` 消费侧对齐 |
+| D-2 | `app/schemas.py` 已定义 `DomainEvent` 与 payload 子模型，但 `insight.classification_suggested` payload 未固化 | 写回事件格式漂移 | **INS-1 实现时**按 **O-1** 嵌套 `PredictResult` 发布，与 `core.yaml` 消费侧对齐 |
+| D-3 | 现状代码目录与详设 §2.3 规范存在差异：现状为 `app/routers/`、`app/auth.py`、`app/models.py`、`app/schemas.py`；详设 §2.3 规范为 `app/api/routers/`、`app/infrastructure/security.py`、`app/domain/models.py`、`app/domain/events.py` | 目录结构不一致，新任务路径混用 | **苏睿技术裁定**：**统一迁移到详设 §2.3 规范**。Phase 1 T001 按详设整理目录结构；Phase 7 T039 将 `app/auth.py` 迁移到 `app/infrastructure/security.py`；`app/models.py`/`app/schemas.py` 待 Phase 2 迁移到 `app/domain/`。现状文件保留至迁移完成，新任务按详设路径组织。 |
 
 ---
 
@@ -91,6 +93,8 @@
 - [ ] T019 [INS-2/3] `app/services/classification.py`：分类应用服务，组装 `PredictResult`
 - [ ] T020 [INS-2/3] `app/api/routers/classification.py`：`POST /classification/predict`，模型不可用时 503
 - [ ] T021 [INS-2/3] `app/services/event_processor.py`：消费 `ticket.created` 后调用分类/定级，发布 `insight.classification_suggested`
+- [ ] T021a [INS-2] `app/services/feedback.py`：分类反馈应用服务，接收纠偏回流样本，写入 `classification_feedback` 表供模型迭代
+- [ ] T021b [INS-2] `app/api/routers/feedback.py`：`POST /feedback/classification`，返回 201，与 `insight.yaml#/ClassificationFeedback` 对齐
 
 **Checkpoint**：`POST /classification/predict` 可返回嵌套建议；`ticket.created` 可写回 `insight.classification_suggested`。
 
@@ -173,7 +177,9 @@ Phase7 INS-8 加固 ──▶ M4 验收
 
 ## 子 Issue 映射
 
-| 子 Issue | 范围 | 负责人 | 状态 |
+> **状态快照说明**：表中"状态"列为编制时快照，以各 Issue 实时状态为准；后续新增 Issue 未列入。
+
+| 子 Issue | 范围 | 负责人 | 状态（快照） |
 |---|---|---|---|
 | [SUP-117](mention://issue/1e4908f8-72c1-4b82-bf4b-1791b2c7bf7b) | INS-0/1 脚手架 + 事件消费骨架 | 苏睿 | todo |
 | [SUP-118](mention://issue/0eedc8ee-31dd-4ef5-9484-b494e5ce8748) | INS-2/3 自动分类 + 定级建议 | 苏睿 | in_review |
