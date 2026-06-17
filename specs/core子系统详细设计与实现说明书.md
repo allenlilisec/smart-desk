@@ -468,7 +468,7 @@ smartdesk-core/
 | 附件元数据/下载授权 | done | `src/smartdesk-core/internal/httpapi/attachments.go`、`src/smartdesk-core/internal/httpapi/attachment_test.go`、`src/smartdesk-core/migrations/0003_attachments.sql` | `GET/POST /tickets/{id}/attachments`、`GET /attachments/{attId}/download-url` 已实现；覆盖 20MB 超限 413、非白名单 422、跨 org 下载 403、`comment_id` 必须属于同一工单；Postgres 组合外键兜底。 |
 | 查询/筛选/分页 | partial/gap | `src/smartdesk-core/internal/httpapi/ticket_handlers.go`、`src/smartdesk-core/internal/store/{memory,postgres}.go` | 已支持 status/priority/assignee_id/requester_id/group_id/category_id/q/sort/page/page_size 与 org scope；缺 `sla_state` 过滤，Postgres `q` 仍为 `LIKE`，未达到设计里的 FTS；`page_size>100` 目前被截断到 100，尚未按契约明确返回 400/422；`sort=-created_at` 依赖默认排序，尚未显式分支。 |
 | OSS 预签名 | gap | `src/smartdesk-core/internal/httpapi/attachments.go` | 当前为 core 内置短时 URL 形态，尚未接 `internal/objstore` 的 S3/MinIO SDK、bucket/endpoint 配置与真实签名。 |
-| requester 工单范围过滤 | drift | `src/smartdesk-core/internal/httpapi/server.go` | 详设要求 requester 仅见本人工单；当前实现按 org scope 过滤，requester 与坐席在同 org 下的详情/列表授权未区分。建议补领域授权，或由架构裁决改写详设。 |
+| requester 工单范围过滤 | gap（H-3） | `src/smartdesk-core/internal/httpapi/server.go` | 详设要求 requester 仅见本人工单；当前实现按 org scope 过滤，requester 与坐席在同 org 下的详情/列表授权未区分。已转 [SUP-285](mention://issue/1af7a39e-3ce7-4003-9bda-a05c8bbbd503) H-3 requester 领域授权 gap，不阻塞 SUP-267 代码侧合入。 |
 
 ---
 
