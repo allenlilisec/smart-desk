@@ -1,0 +1,165 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc">
+  <title id="title">SmartDesk WEB-2 坐席工作台效果图</title>
+  <desc id="desc">展示左队列、中详情、右侧可折叠上下文与 AI 辅助的三栏工作台概念稿。</desc>
+  <defs>
+    <style>
+      .bg{fill:#F8FAFC}
+      .surface{fill:#FFFFFF}
+      .muted{fill:#F1F5F9}
+      .border{stroke:#CBD5E1;stroke-width:1}
+      .soft{stroke:#E2E8F0;stroke-width:1}
+      .title{font:600 24px Arial,"Microsoft YaHei",sans-serif;fill:#0F172A}
+      .h2{font:600 18px Arial,"Microsoft YaHei",sans-serif;fill:#0F172A}
+      .h3{font:600 14px Arial,"Microsoft YaHei",sans-serif;fill:#0F172A}
+      .text{font:400 14px Arial,"Microsoft YaHei",sans-serif;fill:#0F172A}
+      .small{font:400 12px Arial,"Microsoft YaHei",sans-serif;fill:#475569}
+      .tiny{font:400 11px Arial,"Microsoft YaHei",sans-serif;fill:#64748B}
+      .action{fill:#2563EB}
+      .actionText{font:600 13px Arial,"Microsoft YaHei",sans-serif;fill:#FFFFFF}
+      .badgeText{font:600 11px Arial,"Microsoft YaHei",sans-serif}
+      .danger{fill:#FEF2F2;stroke:#FECACA;stroke-width:1}
+      .dangerText{fill:#DC2626}
+      .warn{fill:#FFFBEB;stroke:#FDE68A;stroke-width:1}
+      .warnText{fill:#B45309}
+      .success{fill:#F0FDF4;stroke:#BBF7D0;stroke-width:1}
+      .successText{fill:#15803D}
+      .info{fill:#ECFEFF;stroke:#A5F3FC;stroke-width:1}
+      .infoText{fill:#0891B2}
+      .shadow{filter:url(#shadow)}
+    </style>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#0F172A" flood-opacity=".10"/>
+    </filter>
+  </defs>
+
+  <rect class="bg" width="1600" height="1000"/>
+
+  <rect x="40" y="32" width="1520" height="72" rx="8" class="surface border"/>
+  <text x="72" y="77" class="title">SmartDesk 坐席工作台</text>
+  <text x="322" y="77" class="small">WEB-2 标准骨架：左队列 320px / 中详情 / 右上下文 360px</text>
+  <rect x="1130" y="52" width="104" height="32" rx="6" fill="#EFF6FF" stroke="#BFDBFE"/>
+  <text x="1152" y="73" class="badgeText" fill="#2563EB">我的待办</text>
+  <rect x="1250" y="52" width="104" height="32" rx="6" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="1271" y="73" class="small">通知 6</text>
+  <circle cx="1408" cy="68" r="18" fill="#DBEAFE"/>
+  <text x="1398" y="73" class="badgeText" fill="#1D4ED8">江颜</text>
+
+  <rect x="40" y="128" width="320" height="824" rx="8" class="surface border shadow"/>
+  <text x="64" y="164" class="h2">队列</text>
+  <rect x="64" y="184" width="272" height="40" rx="6" class="muted soft"/>
+  <text x="82" y="209" class="small">搜索工单、报单人、分类</text>
+  <rect x="64" y="244" width="84" height="32" rx="16" fill="#2563EB"/>
+  <text x="86" y="265" class="actionText">我的待办</text>
+  <rect x="156" y="244" width="76" height="32" rx="16" fill="#F8FAFC" stroke="#CBD5E1"/>
+  <text x="176" y="265" class="small">未分派</text>
+  <rect x="240" y="244" width="96" height="32" rx="16" fill="#F8FAFC" stroke="#CBD5E1"/>
+  <text x="260" y="265" class="small">即将超时</text>
+  <text x="64" y="304" class="tiny">排序：优先级 -> SLA 剩余 -> 创建时间</text>
+
+  <rect x="64" y="326" width="272" height="84" rx="8" fill="#FFF7ED" stroke="#FDBA74"/>
+  <rect x="64" y="326" width="5" height="84" rx="2" fill="#DC2626"/>
+  <text x="82" y="352" class="h3">P1 SD-1042 网络权限申请失败</text>
+  <text x="82" y="376" class="small">IT 支持 / 账号权限 · 李明</text>
+  <rect x="82" y="386" width="72" height="18" rx="4" class="danger"/>
+  <text x="94" y="399" class="badgeText dangerText">已超时</text>
+  <text x="248" y="400" class="tiny">9 分钟前</text>
+
+  <rect x="64" y="422" width="272" height="78" rx="8" fill="#FFFFFF" stroke="#E2E8F0"/>
+  <rect x="64" y="422" width="5" height="78" rx="2" fill="#B45309"/>
+  <text x="82" y="448" class="h3">P2 SD-1039 新员工门禁未生效</text>
+  <text x="82" y="472" class="small">办公行政 / 门禁 · 王悦</text>
+  <rect x="82" y="482" width="86" height="18" rx="4" class="warn"/>
+  <text x="94" y="495" class="badgeText warnText">剩余 38m</text>
+  <text x="248" y="495" class="tiny">14 分钟前</text>
+
+  <rect x="64" y="512" width="272" height="78" rx="8" fill="#FFFFFF" stroke="#E2E8F0"/>
+  <rect x="64" y="512" width="5" height="78" rx="2" fill="#2563EB"/>
+  <text x="82" y="538" class="h3">P3 SD-1037 报销系统打不开</text>
+  <text x="82" y="562" class="small">财务 / 报销 · 赵青</text>
+  <rect x="82" y="572" width="72" height="18" rx="4" class="info"/>
+  <text x="96" y="585" class="badgeText infoText">处理中</text>
+
+  <rect x="64" y="602" width="272" height="78" rx="8" fill="#FFFFFF" stroke="#E2E8F0"/>
+  <text x="82" y="628" class="h3">P4 SD-1031 会议室投屏异常</text>
+  <text x="82" y="652" class="small">办公行政 / 会议室 · 陈一</text>
+  <rect x="82" y="662" width="72" height="18" rx="4" class="success"/>
+  <text x="96" y="675" class="badgeText successText">待确认</text>
+
+  <rect x="384" y="128" width="784" height="824" rx="8" class="surface border shadow"/>
+  <rect x="408" y="152" width="736" height="88" rx="8" fill="#F8FAFC" stroke="#E2E8F0"/>
+  <text x="432" y="182" class="h2">SD-1042 网络权限申请失败</text>
+  <text x="432" y="207" class="small">报单人：李明 · 部门：销售一部 · 分类：IT 支持 / 账号权限</text>
+  <rect x="856" y="162" width="72" height="24" rx="5" class="danger"/>
+  <text x="876" y="179" class="badgeText dangerText">P1</text>
+  <rect x="936" y="162" width="86" height="24" rx="5" class="danger"/>
+  <text x="951" y="179" class="badgeText dangerText">已超时</text>
+  <rect x="1032" y="162" width="88" height="24" rx="5" class="info"/>
+  <text x="1048" y="179" class="badgeText infoText">处理中</text>
+  <rect x="432" y="258" width="130" height="38" rx="6" class="action"/>
+  <text x="462" y="282" class="actionText">开始处理</text>
+  <rect x="574" y="258" width="118" height="38" rx="6" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="607" y="282" class="text">分派</text>
+  <rect x="704" y="258" width="118" height="38" rx="6" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="737" y="282" class="text">转派</text>
+  <rect x="834" y="258" width="154" height="38" rx="6" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="862" y="282" class="text">更多操作  ⌘K</text>
+  <text x="1006" y="282" class="small">ActionBar 统一动作注册表</text>
+
+  <rect x="408" y="320" width="736" height="78" rx="8" class="danger"/>
+  <text x="432" y="350" class="h3 dangerText">并发更新提示</text>
+  <text x="432" y="376" class="text">该工单已被他人更新，请刷新后重试。写操作使用 Idempotency-Key，409 是 M2 正确性底线。</text>
+
+  <rect x="408" y="422" width="736" height="178" rx="8" fill="#FFFFFF" stroke="#E2E8F0"/>
+  <text x="432" y="454" class="h2">工单描述</text>
+  <text x="432" y="486" class="text">销售一部新员工入职后无法访问 CRM 与内网共享盘，提示“账号无网络权限”。</text>
+  <text x="432" y="514" class="text">影响客户跟进，请优先处理。</text>
+  <rect x="432" y="542" width="156" height="34" rx="6" fill="#F1F5F9" stroke="#CBD5E1"/>
+  <text x="454" y="564" class="small">附件：错误截图.png</text>
+
+  <rect x="408" y="624" width="736" height="266" rx="8" fill="#FFFFFF" stroke="#E2E8F0"/>
+  <text x="432" y="656" class="h2">评论与内部备注</text>
+  <rect x="432" y="678" width="688" height="58" rx="8" fill="#F8FAFC" stroke="#E2E8F0"/>
+  <text x="456" y="704" class="h3">李明</text>
+  <text x="456" y="726" class="small">CRM 和共享盘都无法访问，截图已上传。</text>
+  <rect x="432" y="752" width="688" height="58" rx="8" fill="#FFFBEB" stroke="#FDE68A"/>
+  <text x="456" y="778" class="h3 warnText">内部备注</text>
+  <text x="536" y="778" class="small">已确认账号缺少 network_access 角色，需联系网关权限同步。</text>
+  <rect x="432" y="828" width="688" height="38" rx="6" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="456" y="852" class="small">输入公开回复或内部备注...</text>
+
+  <rect x="1192" y="128" width="368" height="824" rx="8" class="surface border shadow"/>
+  <text x="1216" y="164" class="h2">上下文侧栏</text>
+  <text x="1340" y="164" class="small">可折叠 · 分区独立降级</text>
+
+  <rect x="1216" y="190" width="320" height="108" rx="8" fill="#FFFFFF" stroke="#E2E8F0"/>
+  <text x="1240" y="222" class="h3">客户信息</text>
+  <text x="1240" y="248" class="small">李明 · 销售一部 · requester</text>
+  <text x="1240" y="272" class="small">近 30 天提单：4 · 当前开放：1</text>
+
+  <rect x="1216" y="314" width="320" height="120" rx="8" fill="#FFFFFF" stroke="#E2E8F0"/>
+  <text x="1240" y="346" class="h3">最近工单</text>
+  <text x="1240" y="374" class="small">SD-0998 邮箱登录失败 · 已关闭</text>
+  <text x="1240" y="400" class="small">SD-1012 VPN 连接超时 · 已解决</text>
+
+  <rect x="1216" y="450" width="320" height="138" rx="8" fill="#FFFFFF" stroke="#E2E8F0"/>
+  <text x="1240" y="482" class="h3">AI 建议</text>
+  <rect x="1240" y="500" width="84" height="22" rx="5" class="info"/>
+  <text x="1254" y="515" class="badgeText infoText">置信度 87%</text>
+  <text x="1240" y="548" class="small">建议：补齐账号 network_access 角色，刷新权限缓存。</text>
+  <text x="1240" y="572" class="tiny">insight 失败时仅本分区 InlineRetry，不影响客户信息。</text>
+
+  <rect x="1216" y="604" width="320" height="128" rx="8" fill="#FFFFFF" stroke="#E2E8F0"/>
+  <text x="1240" y="636" class="h3">相似工单</text>
+  <text x="1240" y="666" class="small">SD-0881 新员工内网权限缺失</text>
+  <text x="1240" y="692" class="small">SD-0914 CRM 角色同步失败</text>
+  <rect x="1240" y="704" width="112" height="20" rx="4" class="warn"/>
+  <text x="1252" y="718" class="badgeText warnText">可重试局部加载</text>
+
+  <rect x="1216" y="748" width="320" height="114" rx="8" fill="#F8FAFC" stroke="#E2E8F0" stroke-dasharray="5 4"/>
+  <text x="1240" y="780" class="h3">静态弱冲突提示</text>
+  <text x="1240" y="808" class="small">关山 6 分钟前更新过此工单。</text>
+  <text x="1240" y="832" class="tiny">M2 不接实时通道；实时占用态后续单独立项。</text>
+
+  <rect x="40" y="966" width="1520" height="1" fill="#CBD5E1"/>
+  <text x="40" y="988" class="tiny">Design tokens: action #2563EB · bg #F8FAFC · surface #FFFFFF · text #0F172A · border #CBD5E1 · danger #DC2626 · warning #B45309 · success #15803D · info #0891B2</text>
+</svg>

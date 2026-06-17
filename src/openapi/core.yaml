@@ -149,6 +149,7 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/CommentPage' } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
     post:
       tags: [comments]
       summary: 新增评论或内部备注（含 @提及，US-2.4/US-5.2）
@@ -158,6 +159,7 @@ paths:
       responses:
         '201': { description: 已创建, content: { application/json: { schema: { $ref: '#/components/schemas/Comment' } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /tickets/{id}/attachments:
     parameters: [{ $ref: '#/components/parameters/TicketId' }]
@@ -217,6 +219,8 @@ paths:
       parameters: [{ $ref: '#/components/parameters/Page' }, { $ref: '#/components/parameters/PageSize' }]
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TimelinePage' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /tickets/{id}/watchers:
     parameters: [{ $ref: '#/components/parameters/TicketId' }]
@@ -262,11 +266,18 @@ paths:
       tags: [config]
       summary: 修改分类节点（admin：改名/启停/排序/移动父节点）
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CategoryUpdate' } } } }
-      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Category' } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Category' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
     delete:
       tags: [config]
       summary: 删除/停用分类节点（admin）
-      responses: { '204': { description: OK }, '409': { description: 仍被引用, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } } }
+      responses:
+        '204': { description: OK }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: 仍被引用, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
 
   /config/sla-policies:
     get:
