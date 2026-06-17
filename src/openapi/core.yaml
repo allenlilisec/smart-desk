@@ -149,6 +149,7 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/CommentPage' } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
     post:
       tags: [comments]
       summary: 新增评论或内部备注（含 @提及，US-2.4/US-5.2）
@@ -158,6 +159,7 @@ paths:
       responses:
         '201': { description: 已创建, content: { application/json: { schema: { $ref: '#/components/schemas/Comment' } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /tickets/{id}/attachments:
     parameters: [{ $ref: '#/components/parameters/TicketId' }]
@@ -218,6 +220,7 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TimelinePage' } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /tickets/{id}/watchers:
     parameters: [{ $ref: '#/components/parameters/TicketId' }]
