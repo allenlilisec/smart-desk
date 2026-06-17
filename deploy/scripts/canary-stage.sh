@@ -7,23 +7,31 @@ STAGE="${1:-c1}"
 
 case "$STAGE" in
   c1)
-    export GATEWAY_STABLE_WEIGHT=19 GATEWAY_CANARY_WEIGHT=1
-    export WEB_STABLE_WEIGHT=19 WEB_CANARY_WEIGHT=1
-    echo "Stage C1: ~5% canary (19:1)"
+    GATEWAY_STABLE_REPLICAS=19; GATEWAY_CANARY_REPLICAS=1
+    WEB_STABLE_REPLICAS=19; WEB_CANARY_REPLICAS=1
+    CORE_STABLE_REPLICAS=19; CORE_CANARY_REPLICAS=1
+    INSIGHT_STABLE_REPLICAS=19; INSIGHT_CANARY_REPLICAS=1
+    echo "Stage C1: ~5% canary (19:1 replica ratio)"
     ;;
   c2)
-    export GATEWAY_STABLE_WEIGHT=3 GATEWAY_CANARY_WEIGHT=1
-    export WEB_STABLE_WEIGHT=3 WEB_CANARY_WEIGHT=1
-    echo "Stage C2: ~25% canary (3:1)"
+    GATEWAY_STABLE_REPLICAS=3; GATEWAY_CANARY_REPLICAS=1
+    WEB_STABLE_REPLICAS=3; WEB_CANARY_REPLICAS=1
+    CORE_STABLE_REPLICAS=3; CORE_CANARY_REPLICAS=1
+    INSIGHT_STABLE_REPLICAS=3; INSIGHT_CANARY_REPLICAS=1
+    echo "Stage C2: ~25% canary (3:1 replica ratio)"
     ;;
   c3)
-    export GATEWAY_STABLE_WEIGHT=1 GATEWAY_CANARY_WEIGHT=1000
-    export WEB_STABLE_WEIGHT=1 WEB_CANARY_WEIGHT=1000
-    echo "Stage C3: ~100% canary (1:1000)"
+    GATEWAY_STABLE_REPLICAS=0; GATEWAY_CANARY_REPLICAS=1
+    WEB_STABLE_REPLICAS=0; WEB_CANARY_REPLICAS=1
+    CORE_STABLE_REPLICAS=0; CORE_CANARY_REPLICAS=1
+    INSIGHT_STABLE_REPLICAS=0; INSIGHT_CANARY_REPLICAS=1
+    echo "Stage C3: ~100% canary (0:1 replica ratio)"
     ;;
   rollback)
-    export GATEWAY_STABLE_WEIGHT=1000 GATEWAY_CANARY_WEIGHT=1
-    export WEB_STABLE_WEIGHT=1000 WEB_CANARY_WEIGHT=1
+    GATEWAY_STABLE_REPLICAS=1; GATEWAY_CANARY_REPLICAS=0
+    WEB_STABLE_REPLICAS=1; WEB_CANARY_REPLICAS=0
+    CORE_STABLE_REPLICAS=1; CORE_CANARY_REPLICAS=0
+    INSIGHT_STABLE_REPLICAS=1; INSIGHT_CANARY_REPLICAS=0
     echo "Rollback: ~100% stable (LKG)"
     ;;
   *)
@@ -32,5 +40,14 @@ case "$STAGE" in
     ;;
 esac
 
+export GATEWAY_STABLE_REPLICAS GATEWAY_CANARY_REPLICAS
+export WEB_STABLE_REPLICAS WEB_CANARY_REPLICAS
+export CORE_STABLE_REPLICAS CORE_CANARY_REPLICAS
+export INSIGHT_STABLE_REPLICAS INSIGHT_CANARY_REPLICAS
+
+# Apply replica counts via compose file envsubst (deploy.replicas).
+# --force-recreate ingress rebuilds nginx upstream server list.
 docker compose -f "$COMPOSE_FILE" up -d --force-recreate ingress
-echo "Ingress weights updated. Verify with: curl -s http://localhost:\${INGRESS_PORT:-8080}/api/"
+
+echo "Canary stage '$STAGE' applied."
+echo "Verify with: ./deploy/scripts/verify-split.sh http://localhost:\${INGRESS_PORT:-19080}/api/ 40"

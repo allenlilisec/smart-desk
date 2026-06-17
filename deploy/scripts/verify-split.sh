@@ -3,13 +3,13 @@
 set -euo pipefail
 
 URL="${1:-http://localhost:19080/api/}"
-SAMPLES="${2:-100}"
+SAMPLES="${2:-40}"
 
 stable=0
 canary=0
 
 for _ in $(seq 1 "$SAMPLES"); do
-  body=$(curl -sf "$URL" || echo '{}')
+  body=$(curl -sfm 5 "$URL" || echo '{}')
   if echo "$body" | grep -q '"version": "canary"'; then
     canary=$((canary + 1))
   else

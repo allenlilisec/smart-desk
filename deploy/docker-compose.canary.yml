@@ -6,16 +6,13 @@
 #   ./deploy/scripts/canary-stage.sh c1   # 5%  (19:1)
 #   ./deploy/scripts/canary-stage.sh c2   # 25% (3:1)
 #   ./deploy/scripts/canary-stage.sh c3   # 100% canary
+#   ./deploy/scripts/canary-stage.sh rollback
 
 name: smartdesk-canary
 
 x-service-common: &service-common
   restart: unless-stopped
   networks: [smartdesk]
-
-x-labels: &prom-labels
-  labels:
-  - "prometheus.scrape=true"
 
 services:
   # ── 共享依赖 ──────────────────────────────────────────────
@@ -72,7 +69,8 @@ services:
       - "version=stable"
       - "service=core"
       - "prometheus.scrape=true"
-    networks: [smartdesk]
+    deploy:
+      replicas: ${CORE_STABLE_REPLICAS:-19}
 
   core-canary:
     <<: *service-common
@@ -86,7 +84,8 @@ services:
       - "version=canary"
       - "service=core"
       - "prometheus.scrape=true"
-    networks: [smartdesk]
+    deploy:
+      replicas: ${CORE_CANARY_REPLICAS:-1}
 
   # ── insight 双轨 ──────────────────────────────────────────
   insight-stable:
@@ -101,7 +100,8 @@ services:
       - "version=stable"
       - "service=insight"
       - "prometheus.scrape=true"
-    networks: [smartdesk]
+    deploy:
+      replicas: ${INSIGHT_STABLE_REPLICAS:-19}
 
   insight-canary:
     <<: *service-common
@@ -115,9 +115,10 @@ services:
       - "version=canary"
       - "service=insight"
       - "prometheus.scrape=true"
-    networks: [smartdesk]
+    deploy:
+      replicas: ${INSIGHT_CANARY_REPLICAS:-1}
 
-  # ── gateway 双轨（nginx 入口权重分流）────────────────────
+  # ── gateway 双轨（nginx 入口按副本比分流）──────────────────
   gateway-stable:
     <<: *service-common
     build:
@@ -130,7 +131,8 @@ services:
       - "version=stable"
       - "service=gateway"
       - "prometheus.scrape=true"
-    networks: [smartdesk]
+    deploy:
+      replicas: ${GATEWAY_STABLE_REPLICAS:-19}
 
   gateway-canary:
     <<: *service-common
@@ -144,7 +146,8 @@ services:
       - "version=canary"
       - "service=gateway"
       - "prometheus.scrape=true"
-    networks: [smartdesk]
+    deploy:
+      replicas: ${GATEWAY_CANARY_REPLICAS:-1}
 
   # ── web 双轨 ──────────────────────────────────────────────
   web-stable:
@@ -158,7 +161,8 @@ services:
     labels:
       - "version=stable"
       - "service=web"
-    networks: [smartdesk]
+    deploy:
+      replicas: ${WEB_STABLE_REPLICAS:-19}
 
   web-canary:
     <<: *service-common
@@ -171,9 +175,10 @@ services:
     labels:
       - "version=canary"
       - "service=web"
-    networks: [smartdesk]
+    deploy:
+      replicas: ${WEB_CANARY_REPLICAS:-1}
 
-  # ── 入口 nginx（权重路由）────────────────────────────────
+  # ── 入口 nginx（按副本数决定是否加入 upstream，等权分发）────
   ingress:
     build:
       context: ./nginx
@@ -185,10 +190,10 @@ services:
     ports:
       - "${INGRESS_PORT:-19080}:80"
     environment:
-      GATEWAY_STABLE_WEIGHT: "${GATEWAY_STABLE_WEIGHT:-19}"
-      GATEWAY_CANARY_WEIGHT: "${GATEWAY_CANARY_WEIGHT:-1}"
-      WEB_STABLE_WEIGHT: "${WEB_STABLE_WEIGHT:-19}"
-      WEB_CANARY_WEIGHT: "${WEB_CANARY_WEIGHT:-1}"
+      GATEWAY_STABLE_REPLICAS: "${GATEWAY_STABLE_REPLICAS:-19}"
+      GATEWAY_CANARY_REPLICAS: "${GATEWAY_CANARY_REPLICAS:-1}"
+      WEB_STABLE_REPLICAS: "${WEB_STABLE_REPLICAS:-19}"
+      WEB_CANARY_REPLICAS: "${WEB_CANARY_REPLICAS:-1}"
     networks: [smartdesk]
 
 networks:
