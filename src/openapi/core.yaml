@@ -307,19 +307,21 @@ paths:
         '201': { description: 已创建, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
 
-  /config/users/{userId}:
+  /internal/users/{userId}:
     parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
     get:
       tags: [config]
-      summary: 用户详情（含租户，供 insight 跨租户通知校验）
+      summary: 用户租户解析（服务间内部端点，供 insight 跨租户通知校验）
       description: >
         返回用户基本信息及所属租户 org_id。insight 发送通知前调用此端点解析 `user_id → org_id`，
         并与调用方 service-jwt claim 中的 org_id 比对；不一致或用户不存在时 fail-closed 拒绝发送。
+        该端点仅用于服务间调用，不进入 gateway 对外契约。
       responses:
         '200':
           description: OK
-          content: { application/json: { schema: { $ref: '#/components/schemas/User' } } }
+          content: { application/json: { schema: { $ref: '#/components/schemas/UserTenantProfile' } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /config/users/{userId}/roles:
@@ -628,6 +630,15 @@ components:
         display_name: { type: string }
         status: { type: string, enum: [active, disabled] }
         roles: { type: array, items: { $ref: '#/components/schemas/RoleCode' } }
+    UserTenantProfile:
+      type: object
+      description: 服务间用户租户解析视图，仅用于 /internal/users/{userId}
+      properties:
+        id: { type: string, format: uuid }
+        org_id: { type: string, description: 租户ID }
+        email: { type: string, format: email }
+        roles: { type: array, items: { $ref: '#/components/schemas/RoleCode' } }
+        status: { type: string, enum: [active, disabled] }
     UserCreate:
       type: object
       required: [username, display_name, roles]

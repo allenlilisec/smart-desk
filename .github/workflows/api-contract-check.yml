@@ -1,0 +1,57 @@
+name: API Contract Check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/openapi/**'
+      - 'src/**'
+      - 'scripts/api_contract_check.py'
+      - 'scripts/api-contract-check.json'
+      - 'scripts/requirements.txt'
+      - 'tests/contract/**'
+      - '.github/workflows/api-contract-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/openapi/**'
+      - 'src/**'
+      - 'scripts/api_contract_check.py'
+      - 'scripts/api-contract-check.json'
+      - 'scripts/requirements.txt'
+      - 'tests/contract/**'
+      - '.github/workflows/api-contract-check.yml'
+
+jobs:
+  api-contract-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r scripts/requirements.txt
+
+      - name: Validate OpenAPI specs
+        run: |
+          python - <<'PY'
+          import yaml
+          from pathlib import Path
+          for f in Path('src/openapi').glob('*.yaml'):
+              print(f"Validating {f}...")
+              yaml.safe_load(f.read_text(encoding='utf-8'))
+          print("All OpenAPI YAML files are syntactically valid.")
+          PY
+
+      - name: Run api-contract-check on production sources
+        run: python scripts/api_contract_check.py --config scripts/api-contract-check.json
+
+      - name: Run contract-check unit tests
+        run: python tests/contract/test_api_contract_check.py

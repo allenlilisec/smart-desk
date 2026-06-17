@@ -1,0 +1,23 @@
+{
+  "providers": {
+    "core": "src/openapi/core.yaml",
+    "insight": "src/openapi/insight.yaml",
+    "gateway": "src/openapi/gateway.yaml"
+  },
+  "consumers": [
+    {
+      "name": "smartdesk-insight",
+      "root": "src/smartdesk-insight",
+      "providers": ["core"],
+      "deprecated_paths": [
+        "/config/users/{userId}"
+      ]
+    },
+    {
+      "name": "smartdesk-gateway",
+      "root": "src/smartdesk-gateway",
+      "providers": ["core", "insight"],
+      "deprecated_paths": []
+    }
+  ]
+}
