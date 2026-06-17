@@ -349,7 +349,7 @@ CREATE TABLE processed_events (    -- 消费幂等（insight.classification_sugg
 | `PATCH /tickets/{id}` | TicketService | 改 `title/description/category_id/priority`；**priority 变更触发 SlaEngine.Recalc**；422 业务校验。返回 Ticket |
 | `POST /tickets/{id}/transitions` | TransitionService | 状态机表校验，非法跃迁 **409**；写 history+timeline；幂等键；SLA 暂停/恢复联动；action enum 见 §4.2（US-2.2） |
 | `POST /tickets/{id}/assignments` | AssignmentService | `kind∈{manual,auto,reassign,escalate}`；写 assignments+timeline→outbox `ticket.assigned`/`ticket.reassigned`；201 Assignment（US-2.3/5.1） |
-| `GET /tickets/{id}/comments` | CommentService | **internal 按 X-User-Roles 过滤**：requester 不返回 internal（US-2.4 AC2）；分页 `CommentPage` |
+| `GET /tickets/{id}/comments` | CommentService | **internal 按 service-jwt roles claim 过滤**：requester 不返回 internal（US-2.4 AC2）；分页 `CommentPage` |
 | `POST /tickets/{id}/comments` | CommentService | `visibility∈{public,internal}`+`mentions`；写 timeline→outbox `ticket.commented`；requester 回复 public 时内部触发 `user_reply` 流转（见 §4.2）。201 Comment |
 | `GET /tickets/{id}/attachments` | AttachmentService | 元数据数组 `Attachment[]` |
 | `POST /tickets/{id}/attachments` | AttachmentService | `AttachmentInit`：`size_bytes`≤20MB（超限 **413**）+ 类型白名单（非白名单 **422**）→签发**上传**预签名 `AttachmentUpload`（OQ-9） |
@@ -459,6 +459,16 @@ smartdesk-core/
 - **幂等**：写操作读 `Idempotency-Key`；命中 `idempotency_keys`(org_id+key) 且 `request_hash` 一致→返回首次响应，不一致→409。
 - **可见性/领域授权**：规则集中在 `domain`；requester 仅见本人工单与 public 评论；附件下载越权 403；本组范围按 `group_id`/scope。
 - **可观测性**（系统详设 §10）：`slog` 结构化 JSON（统一 `trace_id/request_id/org_id/actor_id`）；`/metrics`（P95/P99、SLA 计时准确性、outbox lag、消费 lag）；OTel trace；`/healthz`、`/readyz`。
+
+### 6.2 SUP-267 协作能力实现状态（2026-06-17）
+
+| 范围 | 状态 | 代码/测试锚点 | 说明 |
+|---|---|---|---|
+| 评论/内部备注 | done | `src/smartdesk-core/internal/httpapi/collaboration.go`、`src/smartdesk-core/internal/httpapi/server_test.go` | `GET/POST /tickets/{id}/comments` 已实现；requester 看不到 internal；requester public 回复 `pending_user` 工单会触发 `user_reply` 并恢复 SLA。 |
+| 附件元数据/下载授权 | done | `src/smartdesk-core/internal/httpapi/attachments.go`、`src/smartdesk-core/internal/httpapi/attachment_test.go`、`src/smartdesk-core/migrations/0003_attachments.sql` | `GET/POST /tickets/{id}/attachments`、`GET /attachments/{attId}/download-url` 已实现；覆盖 20MB 超限 413、非白名单 422、跨 org 下载 403；响应保留 `comment_id`。 |
+| 查询/筛选/分页 | partial/gap | `src/smartdesk-core/internal/httpapi/server.go`、`src/smartdesk-core/internal/store/{memory,postgres}.go` | 已支持 status/priority/assignee_id/requester_id/group_id/category_id/q/sort/page/page_size 与 org scope；缺 `sla_state` 过滤，Postgres `q` 仍为 `LIKE`，未达到设计里的 FTS。 |
+| OSS 预签名 | gap | `src/smartdesk-core/internal/httpapi/attachments.go` | 当前为 core 内置短时 URL 形态，尚未接 `internal/objstore` 的 S3/MinIO SDK、bucket/endpoint 配置与真实签名。 |
+| requester 工单范围过滤 | drift | `src/smartdesk-core/internal/httpapi/server.go` | 详设要求 requester 仅见本人工单；当前实现按 org scope 过滤，requester 与坐席在同 org 下的详情/列表授权未区分。建议补领域授权，或由架构裁决改写详设。 |
 
 ---
 
