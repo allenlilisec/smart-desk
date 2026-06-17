@@ -3,10 +3,10 @@
 > 对应任务：SUP-172「[P4][core][CORE-A] 工单生命周期实现（陈川）」立即可开工项。
 > 事实源：
 > - 接口契约：`src/openapi/core.yaml` v1.1.0
-> - 子系统详设：`specs/core子系统详细设计与实现说明书.md` v2.0（§3.2 / §4.2）
+> - 子系统详设：`specs/core子系统详细设计与实现说明书.md` v3.0（轻量 MVP 事实源）
 > - 集成测试框架：`specs/SmartDesk集成测试策略与用例框架.md`
 >
-> 说明：本文件为**测试设计**，供后续实现时直接落地为 Go 契约/集成测试。当前 repo 尚无 Go 骨架，故先以用例集形式输出。
+> 说明：本文件为**测试设计**，供后续实现时直接落地为 Go 契约/集成测试。当前已实现轻量 MVP 骨架，用例可按 `internal/httpapi/*_test.go` 形式落地。
 
 ---
 
@@ -17,7 +17,7 @@
 | T021 | `/tickets`、`/transitions`、`/watchers`、`/csat` 契约测试 | 单服务契约测试 | 逐 path/schema/状态码/错误模型对齐 `core.yaml`，不依赖真实 PG/NATS |
 | T022 | 红线集成测试 | 集成测试（testcontainers PG+NATS） | 验证「幂等、非法状态跃迁 409、AI/NATS 降级仍 201」三条架构红线 |
 
-前置依赖：CORE-0 骨架（oapi-codegen 生成、`serviceAuth` 中间件、testcontainers 夹具）就绪后方可**编码执行**；但用例设计本身已完成，不阻塞。
+前置依赖：CORE-0 骨架（`serviceAuth` 中间件、store 双实现、testcontainers 夹具）就绪后方可**编码执行**；但用例设计本身已完成，不阻塞。
 
 ---
 
@@ -42,7 +42,7 @@
 | T021-T04 | 缺少必填 | 缺 `description` | 400 / 422；`code=VALIDATION_FAILED` | core.yaml `required:[title,description]` |
 | T021-T05 | 非法 priority | `priority=P0` | 400 / 422；枚举校验失败 | `Priority` enum |
 | T021-T06 | 未认证 | 无 Authorization | 401 | `security: serviceAuth` |
-| T021-T07 | 越权领域过滤（预留） | requester 建单后返回的 `requester_id` 与 `X-User-Id` 一致 | 201；后续 T022 再验越权 | §4.2 |
+| T021-T07 | 越权领域过滤（预留） | requester 建单后返回的 `requester_id` 与 service-jwt `sub` claim 一致 | 201；后续 T022 再验越权 | §4.2 |
 
 ---
 
