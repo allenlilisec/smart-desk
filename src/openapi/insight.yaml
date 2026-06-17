@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: SmartDesk Insight API (smartdesk-insight)
-  version: 1.0.0-draft
+  version: 1.0.0
   description: >
     智能分析服务内部契约（Python/FastAPI）。覆盖自动分类/定级建议、相似工单检索、统计聚合
     （看板读模型）、通知（站内+邮件）与通知策略、分类纠偏写回。**仅给建议，不持有工单权威状态**：
@@ -332,7 +332,8 @@ components:
               | ticket.status_changed                        | TicketStatusChangedPayload  |
               | ticket.resolved / ticket.closed / ticket.reopened | TicketResolvedPayload  |
               | ticket.sla_warning / ticket.sla_breached     | TicketSlaPayload            |
-              | ticket.commented / ticket.merged / insight.classification_suggested | (M4 固化，暂为自由 object) |
+              | insight.classification_suggested             | ClassificationSuggestedPayload |
+              | ticket.commented / ticket.merged             | (M4 固化，暂为自由 object) |
 
             **演进规则（version 语义）**：同一 version 内 payload 仅可**增量新增可选字段**（向后兼容）；
             删除/改名/改必填属破坏性变更，必须 bump version 并经架构裁决。当前 version=1。
@@ -342,7 +343,8 @@ components:
             - $ref: '#/components/schemas/TicketStatusChangedPayload'
             - $ref: '#/components/schemas/TicketResolvedPayload'
             - $ref: '#/components/schemas/TicketSlaPayload'
-            - { type: object, description: '预留：ticket.commented/merged/insight.classification_suggested 等，M4 固化前不约束' }
+            - $ref: '#/components/schemas/ClassificationSuggestedPayload'
+            - { type: object, description: '预留：ticket.commented/merged 等，M4 固化前不约束' }
 
     # ---- 领域事件 payload（按 event_type；字段名 = §3.1 权威列名，SUP-17 架构裁决①–⑤）----
     TicketCreatedPayload:
@@ -408,3 +410,28 @@ components:
         assignee_id: { type: string, format: uuid, nullable: true }  # tickets.assignee_id
         lead_id:     { type: string, format: uuid, nullable: true }  # 升级通知收件人（§5.2）
         due_at:      { type: string, format: date-time, description: 本次触发 timer 的截止时刻 }
+
+    ClassificationSuggestedPayload:
+      type: object
+      description: insight.classification_suggested 载荷。version=1，附加-only 演进规则同 DomainEvent。
+      required: [predicted_category_id, confidence, priority, applied]
+      properties:
+        predicted_category_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: 预测的分类 ID（null 表示无法分类）
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: 分类置信度（0-1）
+        priority:
+          type: string
+          enum: [P1, P2, P3, P4]
+          nullable: true
+          description: 建议的优先级（null 表示未建议）
+        applied:
+          type: boolean
+          description: 该分类建议是否已被应用（用户接受或系统自动应用）
