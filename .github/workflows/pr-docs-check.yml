@@ -1,0 +1,51 @@
+name: PR Docs Check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'specs/**'
+      - '.github/workflows/pr-docs-check.yml'
+
+jobs:
+  markdown-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Markdown file encoding and headers
+        run: |
+          set -e
+          echo "Checking changed markdown files..."
+          files=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep '\.md$' || true)
+          if [ -z "$files" ]; then
+            echo "No markdown files changed."
+            exit 0
+          fi
+          for f in $files; do
+            echo "Checking: $f"
+            if [ ! -f "$f" ]; then
+              echo "ERROR: File not found: $f"
+              exit 1
+            fi
+            # Verify UTF-8 encoding
+            if ! file -bi "$f" | grep -q 'utf-8'; then
+              echo "ERROR: $f is not UTF-8 encoded"
+              exit 1
+            fi
+            # Verify file starts with a level-1 header
+            if ! head -n 5 "$f" | grep -q '^# '; then
+              echo "ERROR: $f missing top-level '# ' header in first 5 lines"
+              exit 1
+            fi
+          done
+          echo "All markdown files passed basic checks."
+
+      - name: Verify OpenAPI specs unchanged by testing docs
+        run: |
+          echo "Testing docs PR does not modify OpenAPI contracts."
+          changed=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep '^src/openapi/' || true)
+          if [ -n "$changed" ]; then
+            echo "WARNING: This PR also changes OpenAPI files: $changed"
+          fi
