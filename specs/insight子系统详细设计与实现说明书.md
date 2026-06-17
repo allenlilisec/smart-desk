@@ -20,8 +20,11 @@
 | §7 任务分解与里程碑 | 系统详设 §12.2 给出 M2/M3/M4；本文件细化到 INS 任务、负责人、依赖关系。 |
 | §8 依赖与阻塞 | 在系统详设 §12.3 基础上，按 insight 视角重新梳理前置与下游。 |
 | §9 开放事项 | 新增模块级待决策项，标记需架构团队确认的内容。 |
+| P4 实现状态刷新 | 2026-06-17 对照 `src/smartdesk-insight` submodule@`d0fb07d` 回贴 done/gap/drift；详见 §7.3。 |
 
 > **冲突处理原则**：本文件任何与系统详设、`src/openapi/*.yaml` 不一致之处，以上游事实源为准；开发期发现冲突立即提交架构团队裁决，禁止在实现侧“先按模块详设走”。
+>
+> **归档说明（P4）**：本轮未发现独立的 insight 旧版详设归档文件；历史实现说明若与系统详设 v1.0 或 `src/openapi/insight.yaml` 冲突，均视为已归档参考，不作为实现依据。
 
 ## 1. 范围与职责边界
 
@@ -446,14 +449,29 @@ gateway `POST /tickets/{id}/suggestion` 流程：
 
 | 任务 | 负责人 | 依赖 | 状态/目标 |
 |---|---|---|---|
-| INS-0 服务脚手架 | 苏睿 | `insight.yaml` 冻结 | FastAPI 工程、配置、日志、健康检查、DB 迁移、Docker、CI 通过。 |
-| INS-1 事件消费骨架 | 苏睿 | NATS 部署、core 事件 schema | 稳定消费 `ticket.created` 并 ACK；幂等去重正确。 |
-| INS-2 自动分类 | 苏睿 | taxonomy 分类树、种子语料 | 验证集准确率 ≥80%；`PredictResult` 嵌套结构符合契约。 |
-| INS-3 定级建议 | 苏睿 | INS-2 | 与分类接口一并返回；优先级建议可解释。 |
-| INS-4 相似检索 | 苏睿 | `similarity_index` 表、core 事件补充标题/状态 | P95 < 2s；Top-5 结果可解释；向量预留。 |
-| INS-5 统计聚合 | 苏睿 | core 全量事件、stats_* 表 | 覆盖 7 个 metric、5 种 group_by；CSV 导出正常。 |
-| INS-6 通知中心 | 杨达 | INS-1、邮件网关 | 站内通知 + 邮件发送；至少一次 + 幂等。 |
-| INS-7 通知策略 | 杨达 | INS-6 | 策略即时生效；admin 可配置。 |
+| INS-0 服务脚手架 | 苏睿 | `insight.yaml` 冻结 | **drift/gap**：FastAPI、配置、Docker、DB session 可用；缺 Alembic、CI、契约测试，目录分层与 §2.3 不一致。 |
+| INS-1 事件消费骨架 | 苏睿 | NATS 部署、core 事件 schema | **done/drift**：JetStream 消费、ACK/NAK、`event_id` 幂等、写回发布已实现；缺 `ticket_id` 顺序分区、失败状态记录，payload 判别模型未固化。 |
+| INS-2 自动分类 | 苏睿 | taxonomy 分类树、种子语料 | **done**：`/classification/predict`、种子语料、准确率测试、`PredictResult` 嵌套结构已实现。 |
+| INS-3 定级建议 | 苏睿 | INS-2 | **done**：关键词紧急度 + 分类默认优先级已与分类接口一并返回。 |
+| INS-4 相似检索 | 苏睿 | `similarity_index` 表、core 事件补充标题/状态 | **gap**：`similarity_index`、搜索适配器、服务、router、降级测试均缺失。 |
+| INS-5 统计聚合 | 苏睿 | core 全量事件、stats_* 表 | **gap**：`stats_*` 读模型、投影、查询服务、CSV 导出接口均缺失。 |
+| INS-6 通知中心 | 杨达 | INS-1、邮件网关 | **done/drift**：站内/邮件通知、重试、死信、幂等已实现；事件消费只创建 email 通知记录，不直接投递，默认双通道策略需确认。 |
+| INS-7 通知策略 | 杨达 | INS-6 | **done/drift**：`GET/PUT /notifications/policies` 已实现；文件位置与 §2.3 `policies.py` 建议路径不一致，缺 admin 角色校验。 |
+
+### 7.3 P4 实现状态刷新（2026-06-17）
+
+本节对照 `src/smartdesk-insight` submodule@`d0fb07d`，用于 P4 done/gap/drift 验收；逐项任务级回贴见 [`specs/insight/tasks.md`](insight/tasks.md) §0.4。
+
+| 维度 | 状态 | 证据 | 处置建议 |
+|---|---|---|---|
+| HTTP 契约覆盖 | **partial** | 已实现 `/classification/predict`、`/feedback/classification`、`/notifications`、`/notifications/{notifId}/read`、`/notifications/policies`、`/healthz`、`/readyz`；缺 `/similarity/search`、`/stats/aggregate`、`/stats/export`。 | INS-4/5 补实现；补契约测试校验 FastAPI OpenAPI 与 `src/openapi/insight.yaml`。 |
+| 事件链路 | **partial** | `app/nats_consumer.py` 消费 `smartdesk.ticket.*`，`ProcessedEvent` 幂等，`ticket.created` 发布 `insight.classification_suggested`。 | 补 `ticket_id` 顺序分区、失败状态、M4 payload 判别模型；`ticket.created` 同步维护相似索引。 |
+| 分类/定级 | **done** | `ml/classifier.py`、`ml/priority_estimator.py`、`app/services/classification.py`，测试覆盖准确率、嵌套结构和 503 降级。 | 保持；后续 taxonomy 同步方式需按 O-6 决策。 |
+| 相似检索 | **gap** | 未发现 `app/infrastructure/search.py`、`app/services/similarity.py`、similarity router 或 `similarity_index` ORM。 | 本域补实现，契约不变。 |
+| 统计聚合 | **gap** | 未发现 stats ORM、projector、service、router。 | 本域补实现，契约不变。 |
+| 通知/策略 | **done/drift** | `app/services/notifications.py`、`app/infrastructure/mailer.py`、`NotificationDeadLetter`、策略接口已实现；测试中旧“单站内默认”预期与默认双通道实现冲突。 | 杨达确认默认策略语义；按裁决修测试或修 `is_policy_enabled`。 |
+| 服务鉴权/可观测 | **partial** | `app/auth.py` 已校验 service JWT；JSON 日志存在；`readyz` 只查 DB。 | 补 NATS readiness、request context 日志字段；安全/契约相关提交前需苏睿 committer 检视。 |
+| 验证结果 | **drift** | 2026-06-17 本地 `python -m pytest tests -q`：31 passed / 4 failed；失败均为事件通知默认通道数与旧测试断言不一致。 | 作为 INS-6/7 drift 处理，不改跨服务契约。 |
 
 ## 8. 依赖与阻塞
 
