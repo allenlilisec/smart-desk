@@ -307,6 +307,22 @@ paths:
         '201': { description: 已创建, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /config/users/{userId}:
+    parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
+    get:
+      tags: [config]
+      summary: 用户目录单条查询（按 userId 获取 User，含 org_id）
+      description: >
+        供 insight 等内部服务解析 `user_id → org_id`，用于跨租户通知校验。调用方须持有有效
+        service-jwt；core 按调用方 `org_id` claim 过滤，仅返回同租户用户（越权 403）。
+      responses:
+        '200':
+          description: OK
+          content: { application/json: { schema: { $ref: '#/components/schemas/User' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /config/users/{userId}/roles:
     parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
     put:
@@ -607,6 +623,7 @@ components:
       type: object
       properties:
         id: { type: string, format: uuid }
+        org_id: { type: string, default: default, description: 多租户预留（OQ-7）；用户归属租户 }
         username: { type: string }
         email: { type: string, format: email }
         display_name: { type: string }

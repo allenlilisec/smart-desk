@@ -6,8 +6,10 @@ info:
     智能分析服务内部契约（Python/FastAPI）。覆盖自动分类/定级建议、相似工单检索、统计聚合
     （看板读模型）、通知（站内+邮件）与通知策略、分类纠偏写回。**仅给建议，不持有工单权威状态**：
     分类/定级落库决策权在 core；insight 经事件总线异步消费 core 事件并异步写回建议。
-    **仅供内部调用**：调用方为 gateway，携带服务令牌(serviceAuth)并透传用户身份头。
-    检索接口对二期向量方案**前向兼容**（OQ-5：契约不绑定实现）。
+    **仅供内部调用**：调用方为 gateway，携带服务令牌(serviceAuth)。最终用户身份（user id / roles / org）
+    由 gateway 私钥签发的 service-jwt 以 claim 形式承载（sub / roles / org_id），insight 仅信任已验签 claim
+    作为身份来源；明文 X-User-* / X-Org-Id 头不再用于授权、RBAC、租户隔离等安全决策（可伪造），
+    仅可作为可选链路追踪/日志头保留。检索接口对二期向量方案**前向兼容**（OQ-5：契约不绑定实现）。
     领域事件信封见 #/components/schemas/DomainEvent（与 specs/SmartDesk系统架构设计说明书.md §5 一致）。
 servers:
   - url: http://smartdesk-insight.internal/v1
@@ -99,13 +101,20 @@ paths:
     post:
       tags: [notifications]
       summary: 发送通知（站内/邮件；至少一次+幂等 dedupe_key；US-4.1/US-4.3）
-      description: 通常由事件消费内部触发；本接口供 gateway/core 显式发送（如系统公告）。
+      description: >
+        通常由事件消费内部触发；本接口供 gateway/core 显式发送（如系统公告）。
+        跨租户校验：请求体中的 `user_id` 为目标用户，insight 必须调用 core 用户目录
+        `GET /config/users/{userId}` 解析 `user_id → org_id`，并与 service-jwt claim 中的
+        `org_id` 比对；一致方可发送，不一致返回 403（cross-tenant blocked）。core 用户目录不可用时
+        fail-closed，返回 503 或 403，禁止放行。调用方不得透传 `x-target-user-org-id` 等目标租户头。
       parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/NotificationSend' } } }
       responses:
         '202': { description: 已受理（异步发送）, content: { application/json: { schema: { $ref: '#/components/schemas/Notification' } } } }
+        '403': { description: 越权（cross-tenant blocked 或角色不足）, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '503': { description: core 用户目录不可用（fail-closed）, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
 
   /notifications/{notifId}/read:
     parameters: [{ name: notifId, in: path, required: true, schema: { type: string, format: uuid } }]
@@ -123,10 +132,15 @@ paths:
     put:
       tags: [notifications]
       summary: 配置通知策略（admin，即时生效）
+      description: >
+        仅 `admin` 角色可写。角色判定以 service-jwt 已验签 `roles` claim 为准；
+        不再依据明文 `X-User-Roles` 等代理头。
       requestBody:
         required: true
         content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/NotificationPolicy' } } } }
-      responses: { '200': { description: OK } }
+      responses:
+        '200': { description: OK }
+        '403': { description: 越权（非 admin 角色）, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
 
   /feedback/classification:
     post:
@@ -146,7 +160,12 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: gateway 签发的服务令牌(service-jwt, aud=insight)。用户身份经 X-User-* 头透传。
+      description: >
+        gateway 私钥签发的服务令牌(service-jwt)。insight 强校验：锁定签名算法 RS256（拒绝 alg=none
+        及其它算法）、校验签名（ops 注入公钥，缺失则 fail-fast 不启动）、pin aud=insight 与
+        iss=smartdesk-gateway、要求 exp（并校验 nbf）。最终用户身份从已验签 claim 读取：
+        sub=用户ID、roles=角色数组、org_id=租户；不再从 X-User-* / X-Org-Id 明文头取身份。
+        验签失败返回 401。
 
   parameters:
     IdempotencyKey: { name: Idempotency-Key, in: header, required: false, schema: { type: string } }
