@@ -20,7 +20,7 @@
 ### G-X：跨服务调用路径与 OpenAPI 契约一致
 
 - **生效日期**：2026-06-18
-- **来源事件**：[RB-2026-0617-01](mention://issue/5944bf76-fa2c-42e2-9442-15016690e731)（SUP-303 端点路径漂移，smartdesk-insight PR #14 使用 `/config/users/{userId}` 与最终契约 `/internal/users/{userId}` 不一致）
+- **来源事件**：RB-2026-0617-01（见 [SUP-313](mention://issue/5944bf76-fa2c-42e2-9442-15016690e731)：SUP-303 端点路径漂移，smartdesk-insight PR #14 使用 `/config/users/{userId}` 与最终契约 `/internal/users/{userId}` 不一致）
 - **触发范围**：任何**改动或新增跨服务调用**的 PR 进入 `in_review` 时强制核对。仅服务内部改动可豁免，但须评审人显式确认无跨服务调用变更。
 
 **通过标准（逐条核对，缺一不可）**：
