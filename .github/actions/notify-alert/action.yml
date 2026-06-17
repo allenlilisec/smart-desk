@@ -144,7 +144,7 @@ runs:
         port $SMTP_PORT
         from $SMTP_FROM
         user $SMTP_USER
-        password $SMTP_PASS
+        password $SMTP_PASSWORD
         auth on
         tls on
         tls_starttls on

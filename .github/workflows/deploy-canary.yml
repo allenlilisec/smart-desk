@@ -43,7 +43,7 @@ jobs:
             灰度流水线已启动，目标阶段：${{ inputs.stage }}。
             stable tag：${{ inputs.stable_tag }}，canary tag：${{ inputs.canary_tag }}。
             等待 G 门禁人工确认后推进。
-          recipients: ${{ inputs.notify_recipients }}
+          recipients: ${{ inputs.notify_recipients != '' && inputs.notify_recipients || '发布群' }}
           webhook_url: ${{ secrets.NOTIFY_WEBHOOK_URL }}
 
   build-canary-stub:
@@ -103,7 +103,7 @@ jobs:
             GitHub Environment `canary-gate-${{ inputs.stage }}` 的 required reviewer
             在 60 分钟内未审批。
             已冻结 ${{ inputs.stage }} 放量，请 CTO / 白帆尽快处理。
-          recipients: ${{ inputs.notify_recipients }}
+          recipients: ${{ inputs.notify_recipients != '' && inputs.notify_recipients || '万全,白帆,CTO' }}
           webhook_url: ${{ secrets.NOTIFY_WEBHOOK_URL }}
 
   deploy-stage:
@@ -159,7 +159,7 @@ jobs:
             ${{ inputs.stage == 'c1' && '等待 G3 人工确认后推进 C2（25%）。' || inputs.stage == 'c2' && '等待 G4 人工确认后推进 C3（100%）。' || '等待 G5 CTO 最终确认完成全量发布。' }}
 
             **告警清零 ≠ 自动放量**。
-          recipients: ${{ inputs.notify_recipients }}
+          recipients: ${{ inputs.notify_recipients != '' && inputs.notify_recipients || '发布群' }}
           webhook_url: ${{ secrets.NOTIFY_WEBHOOK_URL }}
 
   notify-failure:
@@ -186,5 +186,5 @@ jobs:
             - G 门禁人工确认超时
 
             请万全立即查看运行日志，白帆裁决是否执行回滚。
-          recipients: ${{ inputs.notify_recipients }}
+          recipients: ${{ inputs.notify_recipients != '' && inputs.notify_recipients || '万全,白帆,CTO' }}
           webhook_url: ${{ secrets.NOTIFY_WEBHOOK_URL }}

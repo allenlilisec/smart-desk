@@ -32,7 +32,7 @@ jobs:
           body: |
             回滚流水线已启动，目标 LKG tag：${{ inputs.lkg_tag }}。
             按回滚预案 §4 顺序执行：web → gateway → insight → core。
-          recipients: ${{ inputs.notify_recipients }}
+          recipients: ${{ inputs.notify_recipients != '' && inputs.notify_recipients || '万全,白帆,CTO' }}
           webhook_url: ${{ secrets.NOTIFY_WEBHOOK_URL }}
 
   rollback:
@@ -116,7 +116,7 @@ jobs:
             后续动作：
             - 万全继续观测 15 min，确认 SLI 恢复至基线 ±10%
             - 白帆通报发布群并安排热修/复盘
-          recipients: ${{ inputs.notify_recipients }}
+          recipients: ${{ inputs.notify_recipients != '' && inputs.notify_recipients || '发布群' }}
           webhook_url: ${{ secrets.NOTIFY_WEBHOOK_URL }}
 
   notify-failure:
@@ -142,5 +142,5 @@ jobs:
             - 回滚后健康检查 / P0 冒烟未通过
 
             请万全立即介入，白帆组织石磊 / 苏睿 / 关山联合排查。
-          recipients: ${{ inputs.notify_recipients }}
+          recipients: ${{ inputs.notify_recipients != '' && inputs.notify_recipients || '万全,白帆,CTO' }}
           webhook_url: ${{ secrets.NOTIFY_WEBHOOK_URL }}
