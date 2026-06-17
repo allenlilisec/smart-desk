@@ -9,7 +9,7 @@
 
 ## 一、done/gap/drift 清单（P4 同步，2026-06-17）
 
-> 口径：本轮已初始化 `src/smartdesk-web` submodule，实际代码从 `smartdesk-web@3748df5` 评估并推进到 `smartdesk-web@5c5f732`（补 `/healthz` 与 OQ-W2 会话快照修复）。旧版“空目录/全量 gap”结论已失效。
+> 口径：本轮已初始化 `src/smartdesk-web` submodule，实际代码从 `smartdesk-web@3748df5` 评估并推进到 `smartdesk-web@9ed0d0b`（补 `/healthz` 与 OQ-W2 会话快照修复）。旧版“空目录/全量 gap”结论已失效。
 >
 > 状态含义：`done`=当前代码满足该任务核心验收；`gap`=未实现或仅 MVP 子集；`drift`=已有实现与冻结详设/路由/契约形态不一致，需改代码或提架构裁决。
 

@@ -19,7 +19,7 @@
 | §10（新增） | 验收标准规范基线（安全/性能/可用性/代码质量） | 补 §10.3 要求的规范基线声明（修订 R1） |
 | §3 存储 | 刷新令牌存储策略更新为 OQ-W2 方案 A（HttpOnly Cookie，同源代理） | 梁栋架构裁定 OQ-W2（2026-06-15） |
 | §9 开放事项 | 回写 OQ-W1/W2/W3 架构裁决结论 | 梁栋架构裁定（2026-06-15），合入前收尾 |
-| §11（新增） | P4 实现状态同步：按 `smartdesk-web@5c5f732` 标注 done/gap/drift 与处置 | SUP-262 要求对齐当前代码、任务清单与系统详设 |
+| §11（新增） | P4 实现状态同步：按 `smartdesk-web@9ed0d0b` 标注 done/gap/drift 与处置 | SUP-262 要求对齐当前代码、任务清单与系统详设 |
 
 ---
 
@@ -441,7 +441,7 @@ smartdesk-web/
 
 ## 11. P4 实现状态同步
 
-> 同步时间：2026-06-17。代码依据：主仓 `src/smartdesk-web` submodule 已从 `smartdesk-web@3748df5` 推进到 `smartdesk-web@5c5f732`，本轮在该工作树内补 `src/app/api/healthz/route.ts`，并修复 `AuthProvider` 会话快照不再写入 `localStorage`。系统详设与 gateway OpenAPI 仍为事实源，本文不因当前 MVP 代码降低冻结设计目标。
+> 同步时间：2026-06-17。代码依据：主仓 `src/smartdesk-web` submodule 已从 `smartdesk-web@3748df5` 推进到 `smartdesk-web@9ed0d0b`，本轮在该工作树内补 `src/app/api/healthz/route.ts`，并修复 `AuthProvider` 会话快照不再写入 `localStorage`。系统详设与 gateway OpenAPI 仍为事实源，本文不因当前 MVP 代码降低冻结设计目标。
 
 ### 11.1 实现状态摘要
 
