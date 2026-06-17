@@ -35,9 +35,27 @@
   - SUP-310：将 insight core 客户端路径修正为 `/internal/users/{userId}` 并更新主仓 submodule 指针；
   - SUP-309：确认 core `/internal/users/{userId}` 实现 commit 已 push 并 bump 到主仓；
   - SUP-313：将"跨服务调用路径与 OpenAPI 契约一致"纳入集体检视门禁必检项。
-- **状态**：跟踪中
+- **状态**：跟踪中（路径修正已提交，待主仓指针更新与 core 实现 commit 可达性确认）
 - **记录人**：韩衡
 - **时间线**：
   - 2026-06-17 21:46：睿恒效能巡检发现 SUP-310 PR #14 使用 `/config/users/{userId}`，与 core 实现/契约口径漂移。
   - 2026-06-18 06:06：苏睿在 smartdesk-insight `927438a` 提交修正路径为 `/internal/users/{userId}`。
   - 2026-06-18 06:10：韩衡确认修正提交存在，但 smart-desk 主仓 submodule 指针仍指向旧 commit `8ece078`，且 core 实现 commit `62938b55` 在本地/远程均不可达，需继续跟踪闭环。
+  - 2026-06-18 06:20：CTO 裁定将"跨服务调用路径与 OpenAPI 契约一致"纳入集体检视门禁必检项（G-X），即日生效。
+
+---
+
+### RB-20260618-002（红）
+
+- **类型**：红
+- **来源**：[SUP-313](mention://issue/5944bf76-fa2c-42e2-9442-15016690e731) 改进项：跨服务端点路径一致性检查机制
+- **事件**：CTO 裁定将"跨服务调用路径与 OpenAPI 契约一致"纳入集体检视门禁必检项，形成可复用的流程改进。
+- **影响范围**：SmartDesk 全项目 PR 集体检视门禁。
+- **根因**：RB-20260618-001 暴露出调用方路径漂移与契约一致性检查缺失，质量管理团队提出门禁建议，CTO 准予纳入正式门禁。
+- **改进项**：
+  - 已创建 `quality/review-checklist.md` 主文档，定义必检项 G-X；
+  - 已在 `AGENTS.md` §9 索引并关联主文档；
+  - 工程化改进（api-contract-check 扩展/consumer-contract 测试）按独立子任务跟踪。
+- **状态**：已生效
+- **记录人**：韩衡
+- **生效日期**：2026-06-18
