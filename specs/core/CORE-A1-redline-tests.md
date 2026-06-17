@@ -2,7 +2,7 @@
 
 > 对应任务：SUP-172「[P4][core][CORE-A] 工单生命周期实现（陈川）」立即可开工项。
 > 事实源：
-> - 接口契约：`src/openapi/core.yaml` v1.0.1
+> - 接口契约：`src/openapi/core.yaml` v1.1.0
 > - 子系统详设：`specs/core子系统详细设计与实现说明书.md` v2.0（§3.2 / §4.2）
 > - 集成测试框架：`specs/SmartDesk集成测试策略与用例框架.md`
 >
@@ -123,7 +123,7 @@
 | 用例ID | 场景 | 请求要点 | 期望 | 对齐 |
 |---|---|---|---|---|
 | T021-T45 | resolved 评价 | ticket status=resolved，`{score:5}` | 201；`Ticket.csat_score=5`；`csat_rated_at` 有值；`csat_comment` 可空 | `CsatCreate` / `Ticket` |
-| T021-T46 | closed 评价带 comment | `{score:4, comment:"..."}` | 201；回填 `csat_comment` | core.yaml 1.0.1 D-1 |
+| T021-T46 | closed 评价带 comment | `{score:4, comment:"..."}` | 201；回填 `csat_comment` | core.yaml 1.1.0 D-1 |
 | T021-T47 | new 状态评价 | status=new | **409**；`Error` | `409` response |
 | T021-T48 | score 越界 | `score=0` / `score=6` | 400 / 422 | `minimum:1 maximum:5` |
 | T021-T49 | 不存在 ticket | 随机 UUID | 404 | `NotFound` |

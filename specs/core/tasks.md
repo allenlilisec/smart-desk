@@ -13,7 +13,7 @@
 
 ## 0. 与 main 现有 `src/` 实现的 done / gap / drift 初判（P4 输入）
 
-> 检视基线：main@`786425d`。结论：**core 尚无任何业务代码实现**，`src/` 仅有契约与占位。下表为 P4（/implement）的起点判定。
+> 检视基线：main@`786425d`（P3 早期）。当前 `src/smartdesk-core/` 已形成**轻量 MVP**：`net/http` 路由 + `internal/domain` + `internal/store`（内存/Postgres 双实现），覆盖工单生命周期主链（建单、状态机、分派、SLA、评论/附件/时间线）。下表按当前事实刷新 done/gap/drift。
 
 ### 0.1 done（已就绪，可直接消费）
 
@@ -27,14 +27,14 @@
 
 ### 0.2 gap（全部待实现 —— 本清单覆盖）
 
-- `src/` 下**无 Go 工程**：仅 `src/openapi/*.yaml` + `src/.gitkeep`。`cmd/`、`internal/`、`migrations/`、`test/`（详设 §6 包布局）**均不存在** → 由 Phase 1/2 起全量新建。
+- `src/smartdesk-core/` 已存在轻量 MVP，但**未按详设 §6 六边形/子域包拆分**，也无 `sqlc`/`oapi-codegen`/`outbox relay`/NATS relay → 由后续 Issue 决定是接受轻量 MVP 事实源还是回归原分层。
 - 无迁移文件（0001–0005）、无 sqlc/oapi-codegen 生成物、无 outbox relay/consumer、无任一 domain 服务、无 CI `api-contract-check` 接线。
 
 ### 0.3 drift（漂移，须在 P4 前对齐）
 
 | # | 漂移 | 影响 | 处置 |
 |---|---|---|---|
-| D-1 | 详设 §6/§8.2 引用 `core.yaml info.version = 1.0.0`，**实际 main 已是 1.1.0**（PR #33：`Ticket/TicketDetail` 增 `csat_comment`/`csat_rated_at`，`Attachment` 增 `comment_id`） | 文档版本号滞后，**非契约冲突**：1.1.0 为 1.0.1 之后再次附加字段后的 minor 版本，且 data-model 的 `csat_ratings.comment` / `attachments.comment_id` 已覆盖，schema 不需改 | **以 1.1.0 为准**实现；详设版本引用已回填 1.1.0（文档级，交资料/架构，不阻塞编码）。`T_CSAT`/`T_ATT` 任务已含这三字段。 |
+| D-1 | 详设 §6/§8.2 引用 `core.yaml info.version = 1.0.0`，**实际 main 已是 1.1.0**（PR #27 去 `-draft` 为 1.0.0，PR #33：`Ticket/TicketDetail` 增 `csat_comment`/`csat_rated_at`，`Attachment` 增 `comment_id`） | 文档版本号滞后，**非契约冲突**：1.1.0 在 1.0.0 之后附加字段提升 minor 版本，且 data-model 的 `csat_ratings.comment` / `attachments.comment_id` 已覆盖，schema 不需改 | **以 1.1.0 为准**实现；详设版本引用已回填 1.1.0（文档级，交资料/架构，不阻塞编码）。`T_CSAT`/`T_ATT` 任务已含这三字段。 |
 | D-2 | 详设 §4.2 状态机措辞 vs core.yaml `action` enum（O2 已裁决以契约为准） | 无：已裁决，详设 §4.2 已按契约口径收敛 | 实现直接以 core.yaml `TransitionRequest.action` enum 为准 |
 
 ---
@@ -65,7 +65,7 @@
 
 - [ ] T009 [P] [CORE-0] `internal/platform`：pgx 连接池、NATS JetStream 连接、slog 结构化 JSON（统一 `trace_id/request_id/org_id/actor_id`）、OTel、`/healthz`(liveness) + `/readyz`(探测 DB+NATS)（核对 core.yaml `security:[]`）
 - [ ] T010 [CORE-0] `internal/httpapi/gen`：`oapi-codegen` 从 `src/openapi/core.yaml` 生成 types + chi server 桩（契约先行；后续 CI 跑 `api-contract-check` 阻止漂移）（依赖 T002）
-- [ ] T011 [CORE-0] `internal/httpapi/middleware`：`recover → requestID(透传 X-Request-Id) → serviceAuth(校验 service-jwt 签名+aud=core) → userCtx(解析 X-User-Id/Roles/X-Org-Id) → metrics`（详设 §2.2/§5.1）
+- [ ] T011 [CORE-0] `internal/httpapi/middleware`：`recover → requestID(透传 X-Request-Id，仅链路追踪) → serviceAuth(校验 service-jwt 签名+aud=core) → userCtx(从已验签 claims 提取 sub/roles/org_id) → metrics`（详设 §2.2/§5.1）
 - [ ] T012 [CORE-0] `internal/repository`：pgx+sqlc Tx 管理基座 + `queries/*.sql` 脚手架；统一「业务表 + timeline + outbox」单事务三写工具（依赖 T005–T008,T010）
 - [ ] T013 [CORE-0] `internal/events`：事件信封(`event_id/event_type/occurred_at/org_id/ticket_id/actor_id/version/payload`)、outbox 写入 API、**outbox relay**（`FOR UPDATE SKIP LOCKED`，至少一次、多副本安全）→ NATS `smartdesk.<domain>.<event>`（依赖 T009,T012）
 - [ ] T014 [CORE-0] `internal/domain`：纯领域内核 —— 状态机迁移表（§4.2）、SLA 计算函数、可见性/领域授权规则、统一错误码（`Error{code,message,details?,trace_id}` 映射 400/401/403/404/409/413/422）
@@ -229,7 +229,7 @@ Phase1 Setup ──▶ Phase2 Foundational(CORE-0: schema/事件/平台/桩) ─
 | 依赖对端 | 类型 | core 侧依赖点 | 阻塞判定 |
 |---|---|---|---|
 | **契约冻结**（梁栋） | 前置门禁 | `core.yaml` v1.1.0 已冻结 | ✅ 已满足，开发 Issue 可解阻塞 |
-| **gateway**（GW-3/GW-5） | 上游调用方 | core 仅信任 gateway 的 service-jwt(aud=core)+mTLS、透传 `X-User-*`。**core 不被 gateway 实现阻塞**（core 定义并校验 serviceAuth 契约即可）；GW-3 聚合 BFF **反向依赖 core 契约就绪**（已就绪） | ⚠️ 单向：core→无阻塞；gateway 依赖 core 契约（已解除） |
+| **gateway**（GW-3/GW-5） | 上游调用方 | core 仅信任 gateway 的 service-jwt(aud=core)+mTLS，身份由 claims 承载；旧的 `X-User-* / X-Org-Id` 明文透传头**已废弃**。**core 不被 gateway 实现阻塞**（core 定义并校验 serviceAuth 契约即可）；GW-3 聚合 BFF **反向依赖 core 契约就绪**（已就绪） | ⚠️ 单向：core→无阻塞；gateway 依赖 core 契约（已解除） |
 | **insight**（INS-1/2/3/6） | 事件对端 | ① core 发 `ticket.*` 供 insight 消费 —— **core 事件 schema(§5.2) 是 insight 消费前置**，core 须先冻结事件信封；② core 消费 `insight.classification_suggested`（Phase 11）—— **依赖 insight 事件 schema 冻结**，否则 T044 阻塞 | ⚠️ **双向**：core 发布侧领先（T013 须先冻结事件 schema 供 INS）；core 消费侧（T044/M3）**阻塞于 insight `classification_suggested` schema 冻结**，需与 insight Leader 对齐字段（confidence/category/priority/applied） |
 | **PostgreSQL** | 存储 | core OLTP 独享库、golang-migrate | 环境就绪即可，无跨域阻塞 |
 | **NATS JetStream** | 事件总线 | Stream `SMARTDESK_EVENTS` | 不可用时 outbox 兜底，**不阻塞主流程** |

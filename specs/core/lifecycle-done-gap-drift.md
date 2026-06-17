@@ -1,22 +1,22 @@
-# core 工单生命周期 done/gap/drift 清单（SUP-266）
+# core 工单生命周期 done/gap/drift 清单（SUP-266 / SUP-267）
 
 > 核查日期：2026-06-17  
-> 范围：仅覆盖工单生命周期相关内容：状态机与非法流转拒绝、分派与 assignee/group 变更、SLA 计时/暂停/恢复/超时升级，以及这些能力直接相关的接口、服务、仓储、测试、文档状态。  
-> 对照来源：`specs/core/tasks.md`、`specs/core子系统详细设计与实现说明书.md`、`src/openapi/core.yaml`、`src/smartdesk-core/`。
+> 范围：覆盖工单生命周期（SUP-266）与协作能力（SUP-267，评论/内部备注/附件/时间线/CSAT/watcher 相关接口）相关内容：状态机与非法流转拒绝、分派与 assignee/group 变更、SLA 计时/暂停/恢复/超时升级、评论/附件/时间线，以及这些能力直接相关的接口、服务、仓储、测试、文档状态。  
+> 对照来源：`specs/core/tasks.md`、`specs/core子系统详细设计与实现说明书.md`、`src/openapi/core.yaml`、`src/smartdesk-core/`（子模块当前 `cab06d3`）。
 
 ## done
 
 | tasks 锚点 | 结论 | 代码/契约位置 |
 |---|---|---|
-| T023 / T031 | 建单会生成工单号、落 `status=new`，并按优先级启动 SLA 计时。 | `src/smartdesk-core/internal/httpapi/server.go:123`、`src/smartdesk-core/internal/httpapi/server.go:169`、`src/smartdesk-core/internal/domain/sla.go:78` |
-| T024 | 状态机显式实现 `accept/start/wait_user/resolve/close/reopen/suspend/resume/cancel`，`user_reply` 仅系统内部触发，非法流转返回 409。 | `src/smartdesk-core/internal/domain/statemachine.go:22`、`src/smartdesk-core/internal/domain/statemachine.go:55`、`src/smartdesk-core/internal/httpapi/server.go:256` |
-| T024 / T030 / T031 | `accept` 标记响应达成；`wait_user` 暂停 SLA；`start`/`user_reply` 恢复并顺延；`resolve` 标记解决达成。 | `src/smartdesk-core/internal/httpapi/server.go:316`、`src/smartdesk-core/internal/domain/sla.go:90`、`src/smartdesk-core/internal/domain/sla.go:99` |
-| T024 | `reopen` 有 7 天窗口校验，成功后 `reopen_count+1` 并清空 `closed_at`。 | `src/smartdesk-core/internal/httpapi/server.go:274`、`src/smartdesk-core/internal/httpapi/server.go:294` |
-| T025 / T031 / T032 | 工单详情聚合 SLA；`PATCH priority` 会重算 SLA 到期时间；`GET /tickets/{id}/sla` 返回 `SlaTimer`，跨租户按契约不泄露存在性。 | `src/smartdesk-core/internal/httpapi/server.go:204`、`src/smartdesk-core/internal/httpapi/server.go:238`、`src/smartdesk-core/internal/httpapi/server.go:459` |
-| T028 / T029 | `POST /tickets/{id}/assignments` 支持 `manual/auto/reassign/escalate`，写 assignment、timeline、事件，并回写 ticket `assignee_id/group_id`。 | `src/smartdesk-core/internal/httpapi/server.go:333`、`src/smartdesk-core/internal/store/memory.go:314`、`src/smartdesk-core/internal/store/postgres.go:474` |
-| T021 / T022 / T028 / T030 | 已有 httptest 闭环覆盖建单、状态机、非法流转、SLA 暂停、用户回复自动恢复、关闭、评论可见性、幂等、跨租户拒绝。 | `src/smartdesk-core/internal/httpapi/server_test.go:153`、`src/smartdesk-core/internal/httpapi/server_test.go:232`、`src/smartdesk-core/internal/httpapi/server_test.go:283`、`src/smartdesk-core/internal/httpapi/server_test.go:336` |
+| T023 / T031 | 建单会生成工单号、落 `status=new`，并按优先级启动 SLA 计时。 | `src/smartdesk-core/internal/httpapi/ticket_handlers.go:30`、`src/smartdesk-core/internal/httpapi/ticket_handlers.go:75`、`src/smartdesk-core/internal/domain/sla.go:78` |
+| T024 | 状态机显式实现 `accept/start/wait_user/resolve/close/reopen/suspend/resume/cancel`，`user_reply` 仅系统内部触发，非法流转返回 409。 | `src/smartdesk-core/internal/domain/statemachine.go:22`、`src/smartdesk-core/internal/domain/statemachine.go:55`、`src/smartdesk-core/internal/httpapi/workflow_handlers.go:23` |
+| T024 / T030 / T031 | `accept` 标记响应达成；`wait_user` 暂停 SLA；`start`/`user_reply` 恢复并顺延；`resolve` 标记解决达成。 | `src/smartdesk-core/internal/httpapi/workflow_handlers.go:84`、`src/smartdesk-core/internal/domain/sla.go:90`、`src/smartdesk-core/internal/domain/sla.go:99` |
+| T024 | `reopen` 有 7 天窗口校验，成功后 `reopen_count+1` 并清空 `closed_at`。 | `src/smartdesk-core/internal/httpapi/workflow_handlers.go:39`、`src/smartdesk-core/internal/httpapi/workflow_handlers.go:62-65` |
+| T025 / T031 / T032 | 工单详情聚合 SLA；`PATCH priority` 会重算 SLA 到期时间；`GET /tickets/{id}/sla` 返回 `SlaTimer`，跨租户按契约不泄露存在性。 | `src/smartdesk-core/internal/httpapi/ticket_handlers.go:108`、`src/smartdesk-core/internal/httpapi/ticket_handlers.go:122`、`src/smartdesk-core/internal/httpapi/collaboration.go:93` |
+| T028 / T029 | `POST /tickets/{id}/assignments` 支持 `manual/auto/reassign/escalate`，写 assignment、timeline、事件，并回写 ticket `assignee_id/group_id`。 | `src/smartdesk-core/internal/httpapi/workflow_handlers.go:102`、`src/smartdesk-core/internal/store/memory_collaboration.go:83`、`src/smartdesk-core/internal/store/postgres.go:503` |
+| T021 / T022 / T028 / T030 | 已有 httptest 闭环覆盖建单、状态机、非法流转、SLA 暂停、用户回复自动恢复、关闭、评论可见性、幂等、跨租户拒绝。 | `src/smartdesk-core/internal/httpapi/server_test.go:153`、`src/smartdesk-core/internal/httpapi/server_test.go:232`、`src/smartdesk-core/internal/httpapi/server_test.go:283`、`src/smartdesk-core/internal/httpapi/server_test.go:340` |
 | T014 | 领域状态机和 SLA 计算是纯 domain 规则，已有单元测试覆盖合法/非法/幂等/系统动作边界。 | `src/smartdesk-core/internal/domain/statemachine.go:55`、`src/smartdesk-core/internal/domain/statemachine_test.go:10` |
-| T011 / 契约 1.1.0 | 业务路由已收口为 service-jwt claims 身份，不再信任 `X-User-*` 明文头；`/healthz`、`/readyz` 免鉴权。 | `src/openapi/core.yaml:9`、`src/openapi/core.yaml:321`、`src/smartdesk-core/internal/httpapi/auth.go:15`、`src/smartdesk-core/internal/httpapi/server.go:53` |
+| T011 / 契约 1.1.0 | 业务路由已收口为 service-jwt claims 身份，不再信任 `X-User-*` 明文头；`/healthz`、`/readyz` 免鉴权。 | `src/openapi/core.yaml:9`、`src/openapi/core.yaml:322`、`src/smartdesk-core/internal/httpapi/auth.go:15`、`src/smartdesk-core/internal/httpapi/server.go:52` |
 
 ## gap
 
