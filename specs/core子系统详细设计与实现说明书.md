@@ -466,6 +466,16 @@ smartdesk-core/
 
 > 任务 ID 对齐系统详设 §12.1，里程碑对齐 §12.2（R2/R5）。**契约冻结前所有开发 Issue 置 blocked**，冻结后由石磊解阻塞并路由。
 
+### 7.0 实现状态快照（SUP-266，2026-06-17）
+
+本节同步 P4 查漏补缺结论；逐项清单见 [`specs/core/lifecycle-done-gap-drift.md`](core/lifecycle-done-gap-drift.md)。
+
+当前 `src/smartdesk-core/` 已形成轻量 MVP：`net/http` 路由 + `domain` 领域规则 + `store` 内存/Postgres 双实现，覆盖建单、列表/详情/更新、状态机、分派、评论触发 `user_reply`、SLA 启动/暂停/恢复/查询、配置种子与 service-jwt claims 身份收口。状态机非法流转返回 409，`resume` 仅用于 `suspended→in_progress`，`pending_user→in_progress` 走坐席 `start` 或系统 `user_reply`。
+
+仍未闭环的生命周期关键项：Idempotency-Key 未保存 request hash 且不同请求体不返回 409；未落 `ticket_status_history`；SLA warning/breached 后台扫描、超时升级与 outbox/NATS 投递未实现；自动分派规则仍是占位；`oapi-codegen`/`api-contract-check` 未接入。上述项涉及 schema、store、事件与调度边界，按关键代码门禁应拆分后续实现并集体检视。
+
+需架构/资料裁决的漂移：当前 OpenAPI 为 `1.1.0`，身份来源已从旧 `X-User-* / X-Org-Id` 明文头改为 gateway 签发的 service-jwt claims；本文和 `specs/core/tasks.md` 仍有 `1.0.0/1.0.1` 与旧透传头表述，应以契约和现代码为准刷新，或明确要求代码回退。
+
 ### 7.1 任务清单（CORE-* 归并，废止 D 系列）
 
 | ID（系统详设 §12.1） | 任务 | 负责人 | 依赖 | 里程碑（§12.2） | 主要交付 |
