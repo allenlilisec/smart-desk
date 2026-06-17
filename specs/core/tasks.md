@@ -67,7 +67,7 @@
 
 ### 2.2 平台/出站适配器与契约桩
 
-- [x] T009 [P] [CORE-0] `internal/platform`：pgx 连接池、NATS JetStream 连接、slog 结构化 JSON（统一 `trace_id/request_id/org_id/actor_id`）、OTel、`/healthz`(liveness) + `/readyz`(探测 DB+NATS)（核对 core.yaml `security:[]`） — **MVP**：pgx/slog/healthz 已存在；NATS JetStream 未接；`/readyz` 不强制探测 DB/NATS（D-4）
+- [x] T009 [P] [CORE-0] `internal/platform`：pgx 连接池、NATS JetStream 连接、slog 结构化 JSON（统一 `trace_id/request_id/org_id/actor_id`）、OTel、`/healthz`(liveness) + `/readyz`(readiness，不强制探测 DB/NATS)（核对 core.yaml `security:[]`） — **MVP**：pgx/slog/healthz 已存在；NATS JetStream 未接；`/readyz` 按 D-4 裁决不强制探测 DB/NATS
 - [ ] T010 [CORE-0] `internal/httpapi/gen`：`oapi-codegen` 从 `src/openapi/core.yaml` 生成 types + chi server 桩（契约先行；后续 CI 跑 `api-contract-check` 阻止漂移）（依赖 T002） — **gap**：手写 `net/http`，未生成
 - [x] T011 [CORE-0] `internal/httpapi/middleware`：`recover → requestID(透传 X-Request-Id，仅链路追踪) → serviceAuth(校验 service-jwt 签名+aud=core) → userCtx(从已验签 claims 提取 sub/roles/org_id) → metrics`（详设 §2.2/§5.1） — **MVP**：中间件链内联在 `Server` 中，已按 claims 口径实现
 - [ ] T012 [CORE-0] `internal/repository`：pgx+sqlc Tx 管理基座 + `queries/*.sql` 脚手架；统一「业务表 + timeline + outbox」单事务三写工具（依赖 T005–T008,T010） — **gap**：`internal/store` 手写 SQL，无 sqlc/ports 抽象；无 outbox 单事务三写

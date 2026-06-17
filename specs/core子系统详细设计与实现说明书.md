@@ -144,7 +144,7 @@ POST /v1/tickets  (Idempotency-Key)
 ### 2.3 部署形态
 
 - 单可执行文件 `smartdesk-core`，内置 HTTP server + outbox relay + JetStream consumer（同进程 goroutine，可经配置拆分独立进程）。
-- 仅监听内网端口（系统详设 §2.2/§7：外部不可达）；`/healthz`(liveness)、`/readyz`(readiness)。
+- 仅监听内网端口（系统详设 §2.2/§7：外部不可达）；`/healthz`（liveness，进程存活，返回 200 即可）、`/readyz`（readiness，服务本身可接收流量，**不强制**探测 DB/NATS；依赖可用性由独立告警或 `/healthz` 的 liveness 语义处理）。
 - **MVP 事实标注（D-4 裁决）**：`/readyz` 当前返回 200 并报告总线健康，不因 DB/NATS 不可用失败，保证主写路径不受总线影响。运维如需 readiness 阻断流量，需另行配置（[SUP-297](mention://issue/d2a2e719-53ad-432e-b0bf-a51cdb0cf37d)）。
 - 无状态、可水平扩；流水号生成与 outbox relay 用 `FOR UPDATE SKIP LOCKED` 保证多副本安全。
 
@@ -399,7 +399,7 @@ CREATE TABLE processed_events (    -- 消费幂等（insight.classification_sugg
 | `GET /config/users` | ConfigService | 用户目录分页 `UserPage`（RBAC 主数据，US-7.3 AC3） |
 | `POST /config/users` | ConfigService | 建用户并授角色（admin）；201 User |
 | `PUT /config/users/{userId}/roles` | ConfigService | body `{roles:RoleCode[]}` 设角色（admin，一账号可兼多角色）；200 User |
-| `GET /healthz` / `GET /readyz` | platform | liveness / readiness（探测 DB+NATS）；`security:[]` |
+| `GET /healthz` / `GET /readyz` | platform | `/healthz`：liveness，进程存活即 200；`/readyz`：readiness，服务可接收流量，**不强制**探测 DB/NATS；`security:[]` |
 
 > **契约面缺口确认**：core.yaml 当前**无** insight 写回的同步 POST 端点（D1 裁定：纯事件写回，写 `Ticket.suggestion` 字段，不新增 core 端点）。本文 §5 据此实现，不擅自增端点。
 
