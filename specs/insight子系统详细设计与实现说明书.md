@@ -455,7 +455,7 @@ gateway `POST /tickets/{id}/suggestion` 流程：
 | INS-3 定级建议 | 苏睿 | INS-2 | **done**：关键词紧急度 + 分类默认优先级已与分类接口一并返回。 |
 | INS-4 相似检索 | 苏睿 | `similarity_index` 表、core 事件补充标题/状态 | **gap**：`similarity_index`、搜索适配器、服务、router、降级测试均缺失。 |
 | INS-5 统计聚合 | 苏睿 | core 全量事件、stats_* 表 | **gap**：`stats_*` 读模型、投影、查询服务、CSV 导出接口均缺失。 |
-| INS-6 通知中心 | 杨达 | INS-1、邮件网关 | **done/drift**：站内/邮件通知、重试、死信、幂等已实现；事件消费只创建 email 通知记录，不直接投递，默认双通道策略需确认。 |
+| INS-6 通知中心 | 杨达 | INS-1、邮件网关 | **done/gap-closure-pending**：基线站内/邮件通知、重试、死信、幂等已实现；PR11 已将默认策略收敛为“无策略时只生成站内通知，email 需显式策略开启”，待 PR11 合入后同步为最终状态。 |
 | INS-7 通知策略 | 杨达 | INS-6 | **done/drift**：`GET/PUT /notifications/policies` 已实现；文件位置与 §2.3 `policies.py` 建议路径不一致，缺 admin 角色校验。 |
 
 ### 7.3 P4 实现状态刷新（2026-06-17）
@@ -469,9 +469,9 @@ gateway `POST /tickets/{id}/suggestion` 流程：
 | 分类/定级 | **done** | `ml/classifier.py`、`ml/priority_estimator.py`、`app/services/classification.py`，测试覆盖准确率、嵌套结构和 503 降级。 | 保持；后续 taxonomy 同步方式需按 O-6 决策。 |
 | 相似检索 | **gap** | 未发现 `app/infrastructure/search.py`、`app/services/similarity.py`、similarity router 或 `similarity_index` ORM。 | 本域补实现，契约不变。 |
 | 统计聚合 | **gap** | 未发现 stats ORM、projector、service、router。 | 本域补实现，契约不变。 |
-| 通知/策略 | **done/drift** | `app/services/notifications.py`、`app/infrastructure/mailer.py`、`NotificationDeadLetter`、策略接口已实现；测试中旧“单站内默认”预期与默认双通道实现冲突。 | 杨达确认默认策略语义；按裁决修测试或修 `is_policy_enabled`。 |
+| 通知/策略 | **done/gap-closure-pending** | 基线 `app/services/notifications.py`、`app/infrastructure/mailer.py`、`NotificationDeadLetter`、策略接口已实现；submodule@`d0fb07d` 未含 PR11，仍表现为缺省 inapp+email。PR11 已补齐站内默认、邮件显式开启，并报 `python -m pytest -q` 40 passed。 | 以 PR11 为目标事实源；待 PR11 合入后同步主仓状态，不把基线双通道默认作为最终结论。 |
 | 服务鉴权/可观测 | **partial** | `app/auth.py` 已校验 service JWT；JSON 日志存在；`readyz` 只查 DB。 | 补 NATS readiness、request context 日志字段；安全/契约相关提交前需苏睿 committer 检视。 |
-| 验证结果 | **drift** | 2026-06-17 本地 `python -m pytest tests -q`：31 passed / 4 failed；失败均为事件通知默认通道数与旧测试断言不一致。 | 作为 INS-6/7 drift 处理，不改跨服务契约。 |
+| 验证结果 | **baseline+PR11 pending** | 2026-06-17 基于 submodule@`d0fb07d` 本地 `python -m pytest tests -q`：31 passed / 4 failed；4 个失败对应 PR11 已处理的默认策略 gap。PR11 自报 `python -m pytest -q`：40 passed。 | PR75 保留基线可追溯性；评审时以 PR11 合入后的新基线复验 INS-6/7。 |
 
 ## 8. 依赖与阻塞
 

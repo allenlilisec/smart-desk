@@ -39,14 +39,14 @@
 - Alembic 迁移、契约测试、CI 工作流缺失；运行时仍靠 `Base.metadata.create_all` 建表。
 - `/readyz` 只检查 DB，未检查 NATS；日志未完整透传 `trace_id/request_id/org_id/actor_id`。
 - `processed_events` 缺 `consumer/status` 字段；`DomainEvent.payload` 仍为自由 `dict`，未对 M4 事件做判别 union。
-- 通知事件消费会按默认策略同时生成 inapp/email，但现有部分测试仍按旧“单 inapp 默认”预期断言，测试期望与实现语义漂移。
+- 基线 submodule@`d0fb07d` 的通知默认策略仍会在缺省策略时同时生成 inapp/email；杨达 PR11 已将结论收敛为“无策略时只生成站内通知，email 需显式策略开启”，本清单将其标为 PR11 待合入后的 gap closure/待同步，不再视为最终事实。
 
 ### 0.3 drift（须在 P4 前对齐）
 
 | # | 漂移 | 影响 | 处置 |
 |---|---|---|---|
 | D-1 | 代码目录仍为 `app/routers/*`、`app/db.py`、`app/nats_consumer.py`，未按详设 §2.3 的 `app/api/routers`、`app/infrastructure/db.py`、`app/workers/*` 分层 | 文档与代码位置不一致，后续评审引用易错 | 建议短期更新任务清单引用当前路径；若 M4 前重构，再按详设目录迁移 |
-| D-2 | `notification_policies` 默认缺省为 enabled；事件消费默认创建 inapp + email 两条通知，部分旧测试仍期望只创建 inapp | 测试红；通知默认策略语义需确认 | 杨达负责确认默认策略：若默认双通道，修测试；若默认站内单通道，改 `is_policy_enabled` |
+| D-2 | 基线 submodule@`d0fb07d` 中 `notification_policies` 缺省 enabled，事件消费会默认创建 inapp + email；但 PR11 已确认目标语义为“无策略时只生成站内通知，email 需显式策略开启” | 基线实现与目标语义不一致；PR75 不应把默认双通道当最终事实 | 标为 **PR11 gap closure/待同步**：待 PR11 合入后，PR75 以站内默认、邮件显式开启为最终状态刷新 |
 | D-3 | `ticket.created` 当前只触发分类/定级写回与通知，未维护 `similarity_index` | 与详设“分类/定级/相似”同源异步处理不一致 | INS-4 实现时补 `similarity_index` 投影，不改跨服务契约 |
 | D-4 | `readyz` 设计要求 DB+NATS，代码只查 DB | 运维健康检查覆盖不足 | 本域可补：增加 NATS 连通性或显式降级状态 |
 | D-5 | `DomainEvent.payload` 对 `ticket.commented`、`ticket.merged`、`insight.classification_suggested` 仍是自由 object | M4 事件契约未固化 | 只列 drift；需梁栋/秦诺冻结事件 schema 后再改 |
@@ -90,13 +90,13 @@
 | T033 | done | `app/infrastructure/mailer.py`、`app/services/notifications.py` | Mailer 抽象、Console/SMTP、指数退避重试已实现。 |
 | T034 | done | `app/models.py:NotificationDeadLetter` | 死信表 ORM 与写入逻辑已实现。 |
 | T035 | done+drift | `app/services/notifications.py`、`app/routers/notifications.py` | email dispatch/retry/dead-letter 已有；事件消费只创建 email notification，不直接投递邮件。 |
-| T036 | done+drift | `app/services/event_processor.py` | 按 `(role,event_type,channel)` 策略生成通知；默认策略语义需确认。 |
+| T036 | done+gap-closure-pending | `app/services/event_processor.py`、PR11 | 基线按 `(role,event_type,channel)` 策略生成通知但缺省会开 email；PR11 已修为站内默认、邮件显式开启，待合入后同步为 done。 |
 | T037 | done+drift | `app/routers/notifications.py` | `GET/PUT /notifications/policies` 已实现；文件路径不是 `app/api/routers/policies.py`。 |
-| T038 | done+drift | `tests/test_email_delivery.py`、`tests/test_notifications.py` | 邮件失败死信、策略开关有测试；现有套件 31/35 通过，4 个旧通知期望与默认双通道实现漂移。 |
+| T038 | done+gap-closure-pending | `tests/test_email_delivery.py`、`tests/test_notifications.py`、PR11 `tests/test_event_notifications.py` | 基线邮件失败死信、策略开关有测试；基线套件 31/35 通过的 4 个通知失败源于缺省 email 生成。PR11 已按“站内默认、邮件显式开启”补测试并报 40 passed，待合入后同步。 |
 | T039 | done | `app/auth.py`、`tests/test_auth.py` | serviceAuth JWT 校验覆盖 audience/issuer/exp/key。 |
 | T040 | gap | `app/main.py:readyz` | 只检查 DB，未检查 NATS。 |
 | T041 | gap | `app/logging_config.py`、调用点日志 | JSON 日志存在；未系统性注入 `trace_id/request_id/org_id/actor_id`。 |
-| T042 | done+gap | `app/auth.py`、`app/services/event_processor.py`、tests | 越权/幂等/AI降级有部分覆盖；事件副作用幂等在旧测试中因通知双通道预期漂移仍红，需统一后回归。 |
+| T042 | done+gap | `app/auth.py`、`app/services/event_processor.py`、tests、PR11 | 越权/幂等/AI降级有部分覆盖；通知默认策略的幂等副作用已由 PR11 作为 gap closure 处理，待 PR11 合入后再以新基线回归。 |
 
 ---
 
