@@ -155,7 +155,7 @@
 
 **Goal**：列表过滤增强 + 时间线/审计。依赖 A1。
 
-- [ ] T039 [P] [CORE-B3] [US1] `internal/ticket` 列表增强：`GET /tickets` 全过滤（`status/priority/assignee_id/requester_id/group_id/category_id/q/sla_state`+`sort`+分页 `page_size≤100`）；`q` 走 FTS；返回 `TicketPage`（升级 T025 基础列表）— **partial/gap**：代码已支持 status/priority/assignee_id/requester_id/group_id/category_id/q/sort/page/page_size 与 org scope；缺 `sla_state` 过滤，Postgres `q` 为 `LIKE` 非 FTS。
+- [ ] T039 [P] [CORE-B3] [US1] `internal/ticket` 列表增强：`GET /tickets` 全过滤（`status/priority/assignee_id/requester_id/group_id/category_id/q/sla_state`+`sort`+分页 `page_size≤100`）；`q` 走 FTS；返回 `TicketPage`（升级 T025 基础列表）— **partial/gap（H-3）**：代码已支持 status/priority/assignee_id/requester_id/group_id/category_id/q/sort/page/page_size 与 org scope；requester 与同 org 坐席的工单范围授权未区分，已转 [SUP-285](mention://issue/1af7a39e-3ce7-4003-9bda-a05c8bbbd503) H-3 gap 闭环；缺 `sla_state` 过滤，Postgres `q` 为 `LIKE` 非 FTS。
 - [x] T040 [P] [CORE-B3] [US1] `internal/timeline`：`GET /tickets/{id}/timeline` 正序、只读追加、分页 `TimelinePage`（US-2.8）（见 `src/smartdesk-core/internal/httpapi/collaboration.go`、`src/smartdesk-core/internal/store/{memory,postgres}.go`）
 
 ---
