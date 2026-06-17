@@ -35,13 +35,13 @@
 | **核心职责** | 自动分类/定级建议、相似工单检索、统计聚合读模型、通知（站内+邮件）与通知策略、消费 core 事件并异步写回建议。 |
 | **权威状态** | **insight 不持有工单权威状态**。分类、定级、相似结果均为“建议”；最终落库/采纳/修改权归 `smartdesk-core`。 |
 | **对外暴露** | **不直接对外暴露**。所有浏览器流量经 `smartdesk-gateway` 转发，insight 仅接受来自 gateway 的内部调用。 |
-| **信任模型** | 后端服务间调用采用 `serviceAuth`（gateway 签发的 service-jwt，aud=insight），并透传 `X-User-Id`、`X-User-Roles`、`X-Org-Id`、`X-Request-Id` 身份头。insight 不二次鉴权用户身份，但用 `X-User-*` 做领域级过滤与日志（系统详设 §7）。 |
+| **信任模型** | 后端服务间调用采用 `serviceAuth`（gateway 签发的 service-jwt，aud=insight），service-jwt claim 承载身份/租户（`sub`、`roles`、`org_id`），`X-Request-Id` 仅作链路追踪。insight 不二次鉴权用户身份，但用 service-jwt 已验签 claims（sub/roles/org_id）做领域级过滤与日志（系统详设 §7）。 |
 | **配置归属** | 分类树（taxonomy）、SLA 策略、用户角色目录等权威配置归 core；insight 只读引用分类码与 SLA 优先级映射（系统详设 §3）。 |
 | **通知策略** | 通知策略由 insight 持有并执行，与通知发送同归一域。 |
 
 **红线重申**：
 1. insight 任何情况下不得直接写入 core OLTP 业务表。
-2. 对外契约不出现 `org_id`；`X-Org-Id` 为内部服务间透传头（系统详设 D4 裁决）。
+2. 对外契约不出现 `org_id`；`org_id` 由内部服务间 service-jwt claim 承载（系统详设 D4 裁决）。
 3. AI 分类/定级/相似必须异步执行，不得阻塞 core 建单主流程（系统详设 §9）。
 
 ## 2. 模块架构与分层
@@ -59,7 +59,7 @@
         │    /tickets/{id}/suggestion、/stats、/stats/export、        │
         │    /notifications、/admin/notification-policies             │
         └────────────────────────────┬─────────────────────────────┘
-                                     │ mTLS + service-jwt + X-User-*
+                                     │ mTLS + service-jwt（sub/roles/org_id）+ X-Request-Id
                                      ▼
         ┌──────────────────────────────────────────────────────────┐
         │ smartdesk-insight (Python/FastAPI)                        │
@@ -316,7 +316,7 @@ gateway 对外暴露 `/api/v1` 前缀，内部转发至 insight `/v1`。gateway 
 | `POST /tickets/{id}/suggestion` | `POST /feedback/classification` + core 分类更新 | 采纳/纠偏分类 | gateway 先写 core 应用分类/优先级，再回流 insight feedback；返回 core 更新后的 `Ticket`。 |
 | `GET /stats` | `GET /stats/aggregate` | 看板聚合 | 参数透传，gateway 做角色范围收敛（manager/lead）。 |
 | `GET /stats/export` | `GET /stats/export` | CSV 导出 | 透传，gateway 仅做鉴权。 |
-| `GET /notifications` | `GET /notifications` | 通知列表 | 透传当前用户身份（`X-User-Id`）。 |
+| `GET /notifications` | `GET /notifications` | 通知列表 | 签发 service-jwt 并携带 sub/roles/org_id claims。 |
 | `POST /notifications/{id}/read` | `POST /notifications/{id}/read` | 标记已读 | 透传。 |
 | `GET /admin/notification-policies` | `GET /notifications/policies` | 通知策略查询 | admin 角色鉴权后透传。 |
 | `PUT /admin/notification-policies` | `PUT /notifications/policies` | 通知策略配置 | admin 角色鉴权后透传。 |
@@ -482,7 +482,7 @@ gateway `POST /tickets/{id}/suggestion` 流程：
 | `src/openapi/insight.yaml` 冻结 | 架构团队（梁栋/秦诺） | 全部 HTTP 接口 | 已冻结 v1.0.0-draft，随系统详设 v1.0 生效。 |
 | core 事件 schema 冻结 + NATS 部署 | core 团队 / 架构 | INS-1/2/3/4/5/6 | `ticket.created` 等 payload 已定义（系统详设 §6.3）。 |
 | taxonomy（分类树）数据 | core | INS-2/3 | core 维护 `categories` 表；insight 需只读同步分类码。 |
-| gateway `serviceAuth` + 透传头 | gateway | 全部 insight 接口安全 | 系统详设 §7 已定义；gateway 实现后联调。 |
+| gateway `serviceAuth` + service-jwt claims | gateway | 全部 insight 接口安全 | 系统详设 §7 已定义；gateway 实现后联调。 |
 | 种子工单语料 | 产品/业务 | INS-2 模型训练 | M3 前需 ≥200 条覆盖主要分类。 |
 | 邮件网关/SMTP 选型 | 架构/运维 | INS-6 邮件通道 | 待确认（§9 开放事项）。 |
 

@@ -20,7 +20,7 @@
 | 系统详设章节/条款 | 本模块处理方式 | 修订原因 | 责任人/日期 |
 |---|---|---|---|
 | §2.2 gateway 边界 | 直接引用，无扩权 | 与系统详设保持一致 | 关山 2026-06-14 |
-| §7 服务间信任 | 细化 service-jwt 签发与 `X-User-*` 透传头 | P2 实现级派生 | 关山 2026-06-14 |
+| §7 服务间信任 | 细化 service-jwt 签发与 claims 承载身份/租户 | P2 实现级派生 | 关山 2026-06-14 |
 | §8 鉴权与 RBAC | 展开 JWT/会话/角色×动作矩阵与守卫链 | gateway 收口实现细节 | 关山 2026-06-14 |
 | §5 gateway.yaml | 逐 path 对照下游映射与聚合策略（34 operations） | 契约实现视角 | 关山 2026-06-14 |
 | §9 聚合流程 / §13 D1/D2 | 详情主聚合 + 相似/建议懒加载；suggestion 读 core 字段 | D1/D2 已裁定，对齐契约 | 关山 2026-06-14 |
@@ -52,7 +52,7 @@
 | 对外入口 | 浏览器唯一 HTTPS 入口（`/api/v1`） | 不直连业务库（除会话/令牌 Redis） |
 | 安全 | JWT 认证、RBAC 收口、限流、审计埋点 | 不持有工单权威状态与业务规则 |
 | 聚合 | 为前端拼装 core + insight 视图（BFF） | 不做 AI 计算、不发领域事件 |
-| 下游调用 | 签发 service-jwt、mTLS 客户端、透传 `X-User-*` 头 | 不替代 core/insight 的领域鉴权过滤（纵深防御仍依赖下游） |
+| 下游调用 | 签发 service-jwt、mTLS 客户端、sub/roles/org_id claims | 不替代 core/insight 的领域鉴权过滤（纵深防御仍依赖下游） |
 
 ### 1.2 仓库与部署
 
@@ -92,7 +92,7 @@
 │  • AuthService / TicketsBffService / StatsBffService …      │
 ├─────────────────────────────────────────────────────────────┤
 │  基础设施层                                                    │
-│  • CoreClient / InsightClient（HTTP + service-jwt + 透传头）    │
+│  • CoreClient / InsightClient（HTTP + service-jwt + claims）    │
 │  • RedisService（会话/刷新令牌/限流/登出黑名单）                 │
 │  • AuditService / RateLimitGuard / TraceIdInterceptor        │
 │  • IdentityProvider（Local 一期 / OIDC 预留）                  │
@@ -281,8 +281,8 @@ refresh token 额外携带 `jti`（一次性刷新后可轮换）。
 ### 5.1 服务拓扑
 
 ```
-web ──JWT──▶ gateway ──service-jwt+X-User-*──▶ core
-                         └──service-jwt+X-User-*──▶ insight
+web ──JWT──▶ gateway ──service-jwt(sub/roles/org_id)──▶ core
+                         └──service-jwt(sub/roles/org_id)──▶ insight
 
 gateway 不订阅事件总线；异步链路不经 gateway。
 ```
@@ -293,10 +293,8 @@ gateway → core/insight 每次请求附带：
 
 ```
 Authorization: Bearer <service-jwt>   # iss=gateway, aud=core|insight, 短时
-X-User-Id: <sub>
-X-User-Roles: agent,lead
-X-Org-Id: default
-X-Request-Id: <trace_id>
+                                      # claims: sub=<user_id>, roles=[agent,lead], org_id=default
+X-Request-Id: <trace_id>              # 仅链路追踪，不作为身份来源
 Idempotency-Key: <透传>
 ```
 
@@ -395,7 +393,7 @@ Idempotency-Key: <透传>
 | **GW-2** | RBAC：角色×动作、@RequireAction、403+审计 | P0 | ✅ MVP | RbacModule, roles.spec |
 | **GW-3** | 聚合 BFF：CoreClient/InsightClient + 全部 gateway.yaml 路由转发与聚合（工单/评论/附件/相似/建议/统计/通知/admin） | P0 | 🔲 | Controllers + BffServices |
 | **GW-4** | 限流 Guard（登录+全局+附件上传） | P1 | 🔲 | RateLimitGuard, 429 契约 |
-| **GW-5** | mTLS 客户端 + service-jwt 签发 + 透传头完善 | P1 | 🔲 | HttpsAgent, ServiceJwtService |
+| **GW-5** | mTLS 客户端 + service-jwt 签发 + claims 完善 | P1 | 🔲 | HttpsAgent, ServiceJwtService |
 
 ### 7.1 GW-3 子任务分解
 
@@ -475,7 +473,7 @@ Idempotency-Key: <透传>
 | **M1** | 列表/查询参数与 core 过滤口径 | **延后 M2**：gateway 查询参数对齐 core `TicketPage` 过滤集，随 GW-3b 实现一并固化 | 不在本修订改路径 |
 | **M2** | 写端点返回体（201/200 是否回实体） | **延后 M2**：POST 类端点默认 201 空体或 Location；需回视图的写操作在 GW-3b 逐端点评审 | 保持现状 |
 | **M3** | admin 角色入口与 RBAC 矩阵 | **延后 M3**：`/admin/*` 与 `admin` 角色动作矩阵在 GW-3d 与武安越权用例一并闭合 | 契约路径已存在 |
-| **M4** | `Me.org_id` 与系统详设 §13 **D4** 冲突 | **移除**：对外 `Me` 不暴露 `org_id`（D4 A 裁决）；JWT claims 与服务间 `X-Org-Id` 仍保留供 gateway 注入，不进入 BFF 响应体 | `Me` schema 删除 `org_id` |
+| **M4** | `Me.org_id` 与系统详设 §13 **D4** 冲突 | **移除**：对外 `Me` 不暴露 `org_id`（D4 A 裁决）；服务间身份由 service-jwt 的 `org_id` claim 承载，不进入 BFF 响应体 | `Me` schema 删除 `org_id` |
 
 ---
 

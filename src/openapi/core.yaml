@@ -307,18 +307,19 @@ paths:
         '201': { description: 已创建, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
 
-  /config/users/{userId}:
+  /internal/users/{userId}:
     parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
     get:
       tags: [config]
-      summary: 用户目录单条查询（按 userId 获取 User，含 org_id）
+      summary: 内部用户租户解析（按 userId 获取 UserTenantProfile）
       description: >
-        供 insight 等内部服务解析 `user_id → org_id`，用于跨租户通知校验。调用方须持有有效
-        service-jwt；core 按调用方 `org_id` claim 过滤，仅返回同租户用户（越权 403）。
+        服务间端点，供 insight 等内部服务解析 `user_id → org_id`，用于跨租户通知校验。
+        调用方须持有有效 service-jwt；core 按调用方 `org_id` claim 过滤，仅返回同租户用户
+        （越权 403）。gateway BFF 不应向外部暴露此端点。
       responses:
         '200':
           description: OK
-          content: { application/json: { schema: { $ref: '#/components/schemas/User' } } }
+          content: { application/json: { schema: { $ref: '#/components/schemas/UserTenantProfile' } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -629,6 +630,16 @@ components:
         display_name: { type: string }
         status: { type: string, enum: [active, disabled] }
         roles: { type: array, items: { $ref: '#/components/schemas/RoleCode' } }
+    UserTenantProfile:
+      type: object
+      description: 服务间用户租户解析视图（内部端点 `/internal/users/{userId}`）。
+      required: [id, org_id, email, roles, status]
+      properties:
+        id: { type: string, format: uuid }
+        org_id: { type: string, default: default, description: 用户归属租户 }
+        email: { type: string, format: email }
+        roles: { type: array, items: { $ref: '#/components/schemas/RoleCode' } }
+        status: { type: string, enum: [active, disabled] }
     UserCreate:
       type: object
       required: [username, display_name, roles]

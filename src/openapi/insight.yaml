@@ -103,10 +103,11 @@ paths:
       summary: 发送通知（站内/邮件；至少一次+幂等 dedupe_key；US-4.1/US-4.3）
       description: >
         通常由事件消费内部触发；本接口供 gateway/core 显式发送（如系统公告）。
-        跨租户校验：请求体中的 `user_id` 为目标用户，insight 必须调用 core 用户目录
-        `GET /config/users/{userId}` 解析 `user_id → org_id`，并与 service-jwt claim 中的
-        `org_id` 比对；一致方可发送，不一致返回 403（cross-tenant blocked）。core 用户目录不可用时
-        fail-closed，返回 503 或 403，禁止放行。调用方不得透传 `x-target-user-org-id` 等目标租户头。
+        跨租户校验：请求体中的 `user_id` 为目标用户，insight 必须调用 core 内部端点
+        `GET /internal/users/{userId}` 获取 `UserTenantProfile` 并解析 `user_id → org_id`，
+        与 service-jwt claim 中的 `org_id` 比对；一致方可发送，不一致返回 403（cross-tenant blocked）。
+        core 用户目录不可用时 fail-closed，返回 503 或 403，禁止放行。调用方不得透传
+        `x-target-user-org-id` 等目标租户头。
       parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
       requestBody:
         required: true
@@ -257,6 +258,10 @@ components:
 
     NotificationSend:
       type: object
+      description: >
+        发送通知请求体。`user_id` 为目标用户；insight 须调用 core `GET /internal/users/{userId}`
+        解析其 `org_id`，并与当前请求上下文 service-jwt claim 中的 `org_id` 做跨租户校验；
+        不一致时拒绝（403），禁止调用方透传 `x-target-user-org-id` 等目标租户头。
       required: [user_id, type, channel, title]
       properties:
         user_id: { type: string, format: uuid }
