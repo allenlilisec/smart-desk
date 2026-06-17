@@ -136,8 +136,8 @@
 
 **Goal**：评论/内部备注 + 可见性过滤 + @提及 + user_reply 自动流转。依赖 A1。
 
-- [ ] T034 [P] [CORE-B1] [US4] 红线集成测试：**internal 备注对 requester 接口层过滤**（US-2.4 AC2，不止 UI）+ requester 回 public 触发 `user_reply`
-- [ ] T035 [CORE-B1] [US4] `internal/comment`：`GET /tickets/{id}/comments`（按 X-User-Roles 过滤 internal）、`POST`（`visibility∈{public,internal}`+`mentions` → timeline → outbox `ticket.commented`）；requester 回 public 时内部触发 `TransitionService(user_reply)`（pending_user→in_progress，SLA 恢复）（依赖 T024,T031）
+- [x] T034 [P] [CORE-B1] [US4] 红线集成测试：**internal 备注对 requester 接口层过滤**（US-2.4 AC2，不止 UI）+ requester 回 public 触发 `user_reply`（见 `src/smartdesk-core/internal/httpapi/server_test.go`）
+- [x] T035 [CORE-B1] [US4] `internal/comment`：`GET /tickets/{id}/comments`（按 service-jwt roles claim 过滤 internal）、`POST`（`visibility∈{public,internal}`+`mentions` → timeline → outbox `ticket.commented`）；requester 回 public 时内部触发 `TransitionService(user_reply)`（pending_user→in_progress，SLA 恢复）（见 `src/smartdesk-core/internal/httpapi/collaboration.go`、`src/smartdesk-core/internal/store/{memory,postgres}.go`）
 
 ---
 
@@ -145,9 +145,9 @@
 
 **Goal**：元数据 + OSS 预签名 + 下载授权。依赖 A1 + OSS 就绪。
 
-- [ ] T036 [P] [CORE-B2] [US1] 红线集成测试：上传超 20MB→**413**、非白名单→**422**、越权下载→**403**（US-2.7 AC2）
-- [ ] T037 [P] [CORE-B2] `internal/objstore`：S3/MinIO 客户端 + 预签名（上传/下载）（依赖 T004）
-- [ ] T038 [CORE-B2] [US1] `internal/attachment`：`GET/POST /tickets/{id}/attachments`（`AttachmentInit` 校验 ≤20MB/白名单 → 签上传 URL）、`GET /attachments/{attId}/download-url`（鉴权后签短时下载 URL）；响应含 **`comment_id`（core.yaml 1.1.0，见 D-1）**（依赖 T023,T037）
+- [x] T036 [P] [CORE-B2] [US1] 红线集成测试：上传超 20MB→**413**、非白名单→**422**、越权下载→**403**（US-2.7 AC2）（见 `src/smartdesk-core/internal/httpapi/attachment_test.go`）
+- [ ] T037 [P] [CORE-B2] `internal/objstore`：S3/MinIO 客户端 + 预签名（上传/下载）（依赖 T004）— **gap**：当前实现为 core 内置短时 URL 形态，未接 MinIO/S3 SDK 与 bucket 配置。
+- [x] T038 [CORE-B2] [US1] `internal/attachment`：`GET/POST /tickets/{id}/attachments`（`AttachmentInit` 校验 ≤20MB/白名单 → 签上传 URL）、`GET /attachments/{attId}/download-url`（鉴权后签短时下载 URL）；响应含 **`comment_id`（core.yaml 1.1.0，见 D-1）**（依赖 T023,T037）（见 `src/smartdesk-core/internal/httpapi/attachments.go`、`src/smartdesk-core/internal/domain/ticket.go`、`src/smartdesk-core/migrations/0003_attachments.sql`）
 
 ---
 
@@ -155,8 +155,8 @@
 
 **Goal**：列表过滤增强 + 时间线/审计。依赖 A1。
 
-- [ ] T039 [P] [CORE-B3] [US1] `internal/ticket` 列表增强：`GET /tickets` 全过滤（`status/priority/assignee_id/requester_id/group_id/category_id/q/sla_state`+`sort`+分页 `page_size≤100`）；`q` 走 FTS；返回 `TicketPage`（升级 T025 基础列表）
-- [ ] T040 [P] [CORE-B3] [US1] `internal/timeline`：`GET /tickets/{id}/timeline` 正序、只读追加、分页 `TimelinePage`（US-2.8）
+- [ ] T039 [P] [CORE-B3] [US1] `internal/ticket` 列表增强：`GET /tickets` 全过滤（`status/priority/assignee_id/requester_id/group_id/category_id/q/sla_state`+`sort`+分页 `page_size≤100`）；`q` 走 FTS；返回 `TicketPage`（升级 T025 基础列表）— **partial/gap（H-3）**：代码已支持 status/priority/assignee_id/requester_id/group_id/category_id/q/sort/page/page_size 与 org scope；requester 与同 org 坐席的工单范围授权未区分，已转 [SUP-285](mention://issue/1af7a39e-3ce7-4003-9bda-a05c8bbbd503) H-3 gap 闭环；缺 `sla_state` 过滤，Postgres `q` 为 `LIKE` 非 FTS。
+- [x] T040 [P] [CORE-B3] [US1] `internal/timeline`：`GET /tickets/{id}/timeline` 正序、只读追加、分页 `TimelinePage`（US-2.8）（见 `src/smartdesk-core/internal/httpapi/collaboration.go`、`src/smartdesk-core/internal/store/{memory,postgres}.go`）
 
 ---
 
