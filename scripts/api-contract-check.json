@@ -1,0 +1,28 @@
+{
+  "ignore_literal_paths": ["/docs", "/api/v1/auth"],
+  "exclude_dirs": [
+    "src/smartdesk-insight/tests",
+    "src/smartdesk-gateway/test"
+  ],
+  "providers": {
+    "core": "src/openapi/core.yaml",
+    "insight": "src/openapi/insight.yaml",
+    "gateway": "src/openapi/gateway.yaml"
+  },
+  "consumers": [
+    {
+      "name": "smartdesk-insight",
+      "root": "src/smartdesk-insight",
+      "providers": ["core", "insight"],
+      "deprecated_paths": [
+        "/config/users/{userId}"
+      ]
+    },
+    {
+      "name": "smartdesk-gateway",
+      "root": "src/smartdesk-gateway",
+      "providers": ["core", "insight", "gateway"],
+      "deprecated_paths": []
+    }
+  ]
+}
