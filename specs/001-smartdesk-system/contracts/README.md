@@ -16,7 +16,7 @@
 - **insight**: `/classification/predict`、`/similarity/search`、`/stats/{aggregate,export}`、`/notifications`(±read)、`/notifications/policies`、`/feedback/classification`、`/healthz`、`/readyz`。
 
 ## 通用约定（三份共用）
-对外 `/api/v1`、内部 `/v1`；`Error{code,message,details?,trace_id}`；HTTP 语义 400/401/403/404/409/413/422/429；分页 `page/page_size`→`{items,page,page_size,total}`；写操作 `Idempotency-Key`；时间 RFC3339 UTC、时长整数；安全 `bearerAuth`(对外 JWT) / `serviceAuth`(内部服务令牌)+`X-User-*`。
+对外 `/api/v1`、内部 `/v1`；`Error{code,message,details?,trace_id}`；HTTP 语义 400/401/403/404/409/413/422/429；分页 `page/page_size`→`{items,page,page_size,total}`；写操作 `Idempotency-Key`；时间 RFC3339 UTC、时长整数；安全 `bearerAuth`(对外 JWT) / `serviceAuth`(内部 service-jwt，claim 承载 sub/roles/org_id，不再以 `X-User-*`/`X-Org-Id` 明文头作为身份来源）。
 
 ## 契约面一致性（D1/D5 已裁定，2026-06-14 梁栋）
 1. **建议写回（D1=纯事件）**：不新增 core 同步写回端点。AI 写回经 `insight.classification_suggested` 事件 → core 幂等写 `Ticket.suggestion` 字段；gateway `GET /tickets/{id}/suggestion` 读取来源即 core 工单详情 `Ticket.suggestion`（`core.yaml` 已建模）；人工采纳/纠偏走 gateway `POST /tickets/{id}/suggestion`（同步，非 AI 写回）。缺口语义闭合，契约面无新增 core 端点。
