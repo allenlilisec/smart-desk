@@ -19,6 +19,7 @@
 | §10（新增） | 验收标准规范基线（安全/性能/可用性/代码质量） | 补 §10.3 要求的规范基线声明（修订 R1） |
 | §3 存储 | 刷新令牌存储策略更新为 OQ-W2 方案 A（HttpOnly Cookie，同源代理） | 梁栋架构裁定 OQ-W2（2026-06-15） |
 | §9 开放事项 | 回写 OQ-W1/W2/W3 架构裁决结论 | 梁栋架构裁定（2026-06-15），合入前收尾 |
+| §11（新增） | P4 实现状态同步：按 `smartdesk-web@5c5f732` 标注 done/gap/drift 与处置 | SUP-262 要求对齐当前代码、任务清单与系统详设 |
 
 ---
 
@@ -34,6 +35,7 @@
 8. [依赖与阻塞](#8-依赖与阻塞)
 9. [开放事项](#9-开放事项)
 10. [验收标准规范基线（对齐 §10.3）](#10-验收标准规范基线对齐-103)
+11. [P4 实现状态同步](#11-p4-实现状态同步)
 
 ---
 
@@ -434,6 +436,55 @@ smartdesk-web/
 | 无障碍（a11y） | `axe-core`（集成 Testing Library）/ Lighthouse a11y | Lighthouse a11y 评分 ≥ 90（M4）；关键交互元素有 ARIA 标签 |
 | 依赖安全 | `npm audit --audit-level=high` | CI 门禁：高危/严重漏洞不得合入（须有 workaround 或升级） |
 | OpenAPI 类型同步 | `openapi-typescript` + `api-contract-check` 技能 | gateway.yaml 变更时同步 regen `types/gateway.d.ts`；契约抽检通过 |
+
+---
+
+## 11. P4 实现状态同步
+
+> 同步时间：2026-06-17。代码依据：主仓 `src/smartdesk-web` submodule 已从 `smartdesk-web@3748df5` 推进到 `smartdesk-web@5c5f732`，本轮在该工作树内补 `src/app/api/healthz/route.ts`，并修复 `AuthProvider` 会话快照不再写入 `localStorage`。系统详设与 gateway OpenAPI 仍为事实源，本文不因当前 MVP 代码降低冻结设计目标。
+
+### 11.1 实现状态摘要
+
+| 范围 | 状态 | 当前实现证据 | 结论 |
+|---|---|---|---|
+| WEB-0 脚手架 | ⚠️ gap | `package.json`、`tsconfig.json`、`next.config.mjs`、`src/app/layout.tsx`、`src/components/AuthProvider.tsx`、`src/lib/api.ts`、`src/app/api/healthz/route.ts` | 工程与基础认证/API 已有，`/healthz` 已补；仍缺 OpenAPI 类型生成、middleware、RBAC、TanStack Query、CI。 |
+| WEB-1 报单门户 | ⚠️ gap | `src/app/login/page.tsx`、`src/app/portal/page.tsx`、`src/app/portal/new/page.tsx`、`src/app/portal/[id]/page.tsx`、`src/components/TicketDetailPanel.tsx` | 登录、提单、列表、详情、close/reopen 基础可演示；CSAT、通知、附件、幂等、表单校验未达详设。 |
+| WEB-2 坐席工作台 | ⚠️ drift | `src/app/agent/page.tsx`、`src/components/TicketList.tsx`、`src/components/TicketDetailPanel.tsx` | 队列/详情/状态/评论/时间线 MVP 已有，但路由为 `/agent`，与冻结设计 `/desk` 不一致；附件、分派、SLA、AI 建议/相似仍缺。 |
+| WEB-3 管理后台 | ❌ gap | 无 `/admin/*` 页面 | 需待 gateway `/admin/*` 稳定后实现。 |
+| WEB-4 看板报表 | ❌ gap | 无 `/dashboard` 页面或 stats 组件 | 依赖 INS-5 stats 与 gateway `/stats`。 |
+| WEB-5 i18n | ❌ gap | `src/lib/types.ts` 与 TSX 页面中文硬编码 | 未接 i18n 框架，文案未外置。 |
+| 测试与质量 | ⚠️ gap | `src/lib/__tests__/auth.test.ts`、`src/lib/__tests__/api.test.ts` | auth/api 回归测试已有；缺 Playwright、Lighthouse、覆盖率与 CI 门禁。 |
+
+### 11.2 已在本轮闭环的 web 本域 gap
+
+| 项 | 对应任务 | 变更 | 状态 |
+|---|---|---|---|
+| 健康检查 | T-00-9 | 新增 `src/app/api/healthz/route.ts`，返回静态 `{ "status": "ok" }` | 已闭环；`next build` 通过，`next start` 下 `GET /api/healthz` 返回 200 |
+| OQ-W2 会话快照一致性 | T-00-4 / §3 存储 | `AuthProvider.refreshMe()` 改用 `saveMeSnapshot()`，避免 `sd_me` 写入 `localStorage`；新增单测覆盖 | 已闭环；`npm test` 17/17 通过 |
+
+### 11.3 不能在本轮闭环的 gap 与依赖
+
+| gap | 后续任务 | 依赖/说明 |
+|---|---|---|
+| OpenAPI 类型生成与契约检查 | 补 T-00-3 / T-00-8 | 使用 `gateway.yaml` 生成 `types/gateway.d.ts`，并在 CI 校验生成结果；不改 OpenAPI。 |
+| 路由守卫、RBAC、QueryProvider | 补 T-00-4~T-00-7 | 先补 `can()`/`RoleGuard`，再迁移页面；避免只靠 UI 隐藏。 |
+| `/agent` → `/desk` 路由漂移 | 改代码 | 建议保留 `/agent` 临时重定向到 `/desk`，主实现迁到 `/desk`，并修正多角色首页优先级。 |
+| WEB-1 附件/CSAT/通知/幂等 | 补 T-01-2 / T-01-6~T-01-8 | gateway 对应路径已在契约中；真实联调需关山确认 stub/实现稳定。 |
+| WEB-2 附件/分派/SLA/AI | 补 T-02-4~T-02-9 | 分派/SLA 依赖 gateway 聚合；AI 建议/相似属 M3，依赖 insight/core 写回链路。 |
+| WEB-3 管理后台 | 补 T-03-1~T-03-4 | 依赖 gateway `/admin/*` 与 core 权威配置能力稳定。 |
+| WEB-4 看板 | 补 T-04-1~T-04-3 | 依赖 INS-5 stats 与 gateway `/stats`/`/stats/export`。 |
+| WEB-5 i18n | 补 T-05-1~T-05-2 | 不依赖后端，可与页面补齐并行；需统一文案抽取口径。 |
+| Playwright/Lighthouse/CI | 补 T-QA-2~T-QA-5 | 需要稳定路由与 mock/真实 API 环境后落地。 |
+
+### 11.4 drift 裁决状态
+
+| drift | 建议动作 | 是否需架构裁决 |
+|---|---|---|
+| `/agent` 与冻结 `/desk` 不一致 | 改代码到 `/desk`，`/agent` 仅作为兼容重定向（如产品仍需要旧入口再提裁决） | 否 |
+| `homePathForRoles()` 未按 `admin > manager > lead > agent > requester` 路由 | 改代码，与 OQ-W1 已裁决优先级对齐 | 否 |
+| 手写 API 类型未绑定 gateway OpenAPI | 改代码，接 `openapi-typescript` 生成与 CI 检查 | 否 |
+| 目录未按 `features/*`/`lib/rbac/*`/`lib/api/client.ts` 分层 | 后续功能开发时渐进迁移，避免单独大改影响 MVP | 否 |
+| UI 技术栈缺 shadcn/Radix、TanStack Query、RHF/Zod、XState | 按原详设补实现；若团队决定换栈，需前端 committer 发起设计变更 | 仅换栈时需要 |
 
 ---
 
