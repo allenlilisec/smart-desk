@@ -25,6 +25,7 @@ tags:
   - name: sla
   - name: timeline
   - name: config
+  - name: internal
 
 security:
   - serviceAuth: []
@@ -307,18 +308,19 @@ paths:
         '201': { description: 已创建, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
 
-  /config/users/{userId}:
+  /internal/users/{userId}:
     parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
     get:
-      tags: [config]
-      summary: 用户详情（含租户，供 insight 跨租户通知校验）
+      tags: [internal]
+      summary: 内部用户租户解析（SUP-303 / SUP-309，供 insight/gateway 服务间调用）
       description: >
-        返回用户基本信息及所属租户 org_id。insight 发送通知前调用此端点解析 `user_id → org_id`，
-        并与调用方 service-jwt claim 中的 org_id 比对；不一致或用户不存在时 fail-closed 拒绝发送。
+        服务间内部端点，不通过 gateway.yaml 对外暴露。返回用户租户身份摘要（id / org_id /
+        email / roles / status），供 insight 发送通知前解析 `user_id → org_id` 并校验与调用方
+        service-jwt claim 中的 org_id 一致；不一致或用户不存在时 fail-closed 拒绝发送。
       responses:
         '200':
           description: OK
-          content: { application/json: { schema: { $ref: '#/components/schemas/User' } } }
+          content: { application/json: { schema: { $ref: '#/components/schemas/UserTenantProfile' } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
@@ -618,6 +620,15 @@ components:
               response_minutes: { type: integer }
               resolve_minutes: { type: integer }
 
+    UserTenantProfile:
+      type: object
+      description: 服务间内部用户租户身份摘要（GET /internal/users/{userId}）。
+      properties:
+        id: { type: string, format: uuid }
+        org_id: { type: string, description: 租户ID（多租户预留，OQ-7） }
+        email: { type: string, format: email }
+        status: { type: string, enum: [active, disabled] }
+        roles: { type: array, items: { $ref: '#/components/schemas/RoleCode' } }
     User:
       type: object
       properties:
