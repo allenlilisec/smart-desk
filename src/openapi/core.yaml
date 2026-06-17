@@ -624,7 +624,6 @@ components:
       type: object
       properties:
         id: { type: string, format: uuid }
-        org_id: { type: string, default: default, description: 多租户预留（OQ-7）；用户归属租户 }
         username: { type: string }
         email: { type: string, format: email }
         display_name: { type: string }
