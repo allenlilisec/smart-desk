@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: core-canary
+  namespace: smartdesk-canary
+  labels:
+    app: core
+    version: canary
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: core
+      version: canary
+  template:
+    metadata:
+      labels:
+        app: core
+        version: canary
+    spec:
+      containers:
+        - name: core
+          image: smartdesk/core:canary
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: smartdesk-config
+          env:
+            - name: SERVICE
+              value: "core"
+            - name: VERSION
+              value: "canary"
+            - name: PORT
+              value: "8080"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
