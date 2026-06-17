@@ -182,9 +182,9 @@ async def main() -> int:
             assert r.status_code == 201, r.text
             other_org_user = uuid.UUID(r.json()["id"])
 
-            # Verify core returns org_id
+            # Verify core returns org_id via internal user directory
             r = await client.get(
-                f"{CORE_URL}/config/users/{same_org_user}",
+                f"{CORE_URL}/internal/users/{same_org_user}",
                 headers={"Authorization": f"Bearer {admin_token}"},
             )
             print("get same-org user:", r.status_code, r.json())
