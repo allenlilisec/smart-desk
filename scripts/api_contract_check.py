@@ -160,7 +160,7 @@ def _extract_method_from_line(line: str) -> Optional[str]:
     return None
 
 
-def _discover_calls(consumer: Consumer, providers: List[Provider]) -> List[Tuple[Endpoint, Optional[str]]]:
+def _discover_calls(consumer: Consumer, providers: List[Provider], exclude_dirs: List[str], repo_root: Path) -> List[Tuple[Endpoint, Optional[str]]]:
     """扫描消费者代码，返回 (Endpoint, 检测到的方法提示)。"""
     calls: List[Tuple[Endpoint, Optional[str]]] = []
     if not consumer.root.exists():
@@ -174,7 +174,13 @@ def _discover_calls(consumer: Consumer, providers: List[Provider]) -> List[Tuple
     extensions = (".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".java", ".kt", ".cs")
     for ext in extensions:
         for file_path in consumer.root.rglob(f"*{ext}"):
-            if "node_modules" in file_path.parts or "vendor" in file_path.parts:
+            if any(part in ("node_modules", "vendor") for part in file_path.parts):
+                continue
+            try:
+                rel = file_path.relative_to(repo_root).as_posix()
+            except ValueError:
+                rel = file_path.as_posix()
+            if any(rel.startswith(d.rstrip("/") + "/") or rel == d.rstrip("/") for d in exclude_dirs):
                 continue
             try:
                 text = file_path.read_text(encoding="utf-8")
@@ -253,7 +259,12 @@ def _load_config(config_path: Path) -> Tuple[Dict[str, Provider], List[Consumer]
 
 
 def run(config_path: Path) -> int:
+    cfg = json.loads(config_path.read_text(encoding="utf-8"))
     providers, consumers = _load_config(config_path)
+    repo_root = _find_repo_root(config_path)
+
+    ignore_paths: set[str] = set(cfg.get("ignore_literal_paths", []))
+    exclude_dirs: List[str] = cfg.get("exclude_dirs", [])
 
     errors: List[str] = []
     warnings: List[str] = []
@@ -265,7 +276,7 @@ def run(config_path: Path) -> int:
             print(f"[INFO] 消费者 {consumer.name} 目录不存在，跳过扫描: {consumer.root}")
             continue
 
-        calls = _discover_calls(consumer, consumer_providers)
+        calls = _discover_calls(consumer, consumer_providers, exclude_dirs, repo_root)
         for call_ep, method_hint in calls:
             # 去掉 scheme/host，只保留路径部分
             from urllib.parse import urlparse
@@ -278,6 +289,10 @@ def run(config_path: Path) -> int:
                 stripped = _strip_base_path(stripped, provider.base_paths)
                 if stripped != (parsed.path or call_ep.path):
                     break
+
+            # 全局忽略的非 API 路径字面量（如 cookie path、docs 页）
+            if stripped in ignore_paths or (parsed.path or call_ep.path) in ignore_paths:
+                continue
 
             # 废弃路径优先报错
             matched_deprecated = _find_deprecated_template(stripped, consumer.deprecated_paths)
