@@ -1,0 +1,113 @@
+name: Alert Trigger Tests
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-success-notification:
+    name: T1 · 成功/推进通知
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 发送成功通知
+        id: notify
+        uses: ./.github/actions/notify-alert
+        with:
+          severity: success
+          title: "【测试】阶段推进提醒"
+          body: |
+            这是一条模拟的 C1 成功通知。
+            下一门禁：等待 G3 人工确认后推进 C2。
+          recipients: "发布群,CTO"
+          webhook_url: ${{ secrets.NOTIFY_WEBHOOK_URL }}
+
+      - name: 校验 payload 已生成
+        run: |
+          if [ ! -f notify-payload.json ]; then
+            echo "ERROR: notify-payload.json not found"
+            exit 1
+          fi
+          cat notify-payload.json
+          echo "severity=$(jq -r .severity notify-payload.json)" >> "$GITHUB_ENV"
+
+      - name: 校验 severity
+        run: |
+          if [ "${{ env.severity }}" != "success" ]; then
+            echo "ERROR: expected severity=success, got ${{ env.severity }}"
+            exit 1
+          fi
+          echo "T1 passed"
+
+  simulate-failure:
+    name: T2 · 模拟 workflow 失败
+    runs-on: ubuntu-latest
+    steps:
+      - name: 故意失败的步骤
+        run: |
+          echo "Simulating deploy step failure..."
+          exit 1
+
+  notify-failure:
+    name: T2 · workflow 失败告警
+    needs: simulate-failure
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 发送失败告警
+        uses: ./.github/actions/notify-alert
+        with:
+          severity: P0
+          title: "【测试】workflow 失败告警"
+          body: |
+            simulate-failure job 失败，P0 告警应被触发。
+          recipients: "值班,CTO"
+          webhook_url: ${{ secrets.NOTIFY_WEBHOOK_URL }}
+
+  simulate-image-failure:
+    name: T3 · 模拟镜像/部署异常
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 模拟 GHCR 推送失败
+        run: |
+          echo "Simulating GHCR push failure..."
+          exit 1
+
+  notify-image-failure:
+    name: T3 · 镜像/部署异常告警
+    needs: simulate-image-failure
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 发送镜像失败告警
+        uses: ./.github/actions/notify-alert
+        with:
+          severity: P0
+          title: "【测试】镜像/部署异常告警"
+          body: |
+            镜像构建或 GHCR 推送步骤失败，应触发 P0 告警。
+          recipients: "值班,CTO"
+          webhook_url: ${{ secrets.NOTIFY_WEBHOOK_URL }}
+
+  gate-timeout-test:
+    name: T4 · 人工确认超时告警（仅结构验证）
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 说明
+        run: |
+          echo "T4 为说明性测试："
+          echo "在实际仓库中，需配置 GitHub Environment 的 required reviewers，"
+          echo "然后触发 deploy-canary.yml 并不审批，等待 timeout-minutes 后观察 P1 超时告警。"

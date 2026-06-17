@@ -1,0 +1,164 @@
+name: 'Notify Alert'
+description: >
+  发送灰度/回滚流水线告警通知。
+  支持 Webhook（Slack/Teams/企业微信等）与可选 SMTP 邮件兜底。
+  未配置 Webhook 时仅记录日志，便于本地与 CI 调试。
+
+inputs:
+  severity:
+    description: '告警级别：P0 | P1 | P2 | info | success'
+    required: true
+  title:
+    description: '告警标题'
+    required: true
+  body:
+    description: '告警正文（支持多行）'
+    required: true
+  recipients:
+    description: '通知对象，逗号分隔的邮箱/频道/用户名'
+    required: false
+    default: ''
+  webhook_url:
+    description: '通用 Webhook URL，例如 Slack/Teams Incoming Webhook'
+    required: false
+    default: ''
+  smtp_server:
+    description: 'SMTP 服务器（可选）'
+    required: false
+    default: ''
+  smtp_port:
+    description: 'SMTP 端口（可选，默认 587）'
+    required: false
+    default: '587'
+  smtp_user:
+    description: 'SMTP 用户名（可选）'
+    required: false
+    default: ''
+  smtp_password:
+    description: 'SMTP 密码（可选）'
+    required: false
+    default: ''
+  smtp_from:
+    description: 'SMTP 发件人（可选）'
+    required: false
+    default: ''
+  smtp_to:
+    description: 'SMTP 收件人，逗号分隔（可选）'
+    required: false
+    default: ''
+
+outputs:
+  sent:
+    description: '是否成功发送到 Webhook'
+    value: ${{ steps.send.outputs.sent }}
+  response:
+    description: 'Webhook 返回内容'
+    value: ${{ steps.send.outputs.response }}
+
+runs:
+  using: composite
+  steps:
+    - name: 构造告警 payload
+      id: prepare
+      shell: bash
+      run: |
+        payload=$(jq -n \
+          --arg severity "${{ inputs.severity }}" \
+          --arg title "${{ inputs.title }}" \
+          --arg body "${{ inputs.body }}" \
+          --arg recipients "${{ inputs.recipients }}" \
+          --arg repo "${{ github.repository }}" \
+          --arg run_id "${{ github.run_id }}" \
+          --arg run_url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+          --arg actor "${{ github.actor }}" \
+          --arg event "${{ github.event_name }}" \
+          --arg ref "${{ github.ref }}" \
+          --arg sha "${{ github.sha }}" \
+          --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          '{
+            severity: $severity,
+            title: $title,
+            body: $body,
+            recipients: ($recipients | split(",") | map(select(. != ""))),
+            repository: $repo,
+            run_id: $run_id,
+            run_url: $run_url,
+            actor: $actor,
+            event: $event,
+            ref: $ref,
+            sha: $sha,
+            timestamp: $timestamp
+          }')
+        echo "payload=$payload" >> "$GITHUB_OUTPUT"
+        echo "$payload" > notify-payload.json
+        {
+          echo "==== ALERT ===="
+          echo "Severity : ${{ inputs.severity }}"
+          echo "Title    : ${{ inputs.title }}"
+          echo "Recipients: ${{ inputs.recipients }}"
+          echo "Run URL  : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "Body     :"
+          echo "${{ inputs.body }}"
+          echo "==============="
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: 发送到 Webhook
+      id: send
+      shell: bash
+      run: |
+        url="${{ inputs.webhook_url }}"
+        if [ -n "$url" ]; then
+          echo "Sending alert to webhook..."
+          resp=$(curl -sS -X POST \
+            -H "Content-Type: application/json" \
+            -d @notify-payload.json \
+            "$url" || echo '{"error":"curl_failed"}')
+          echo "response=$resp" >> "$GITHUB_OUTPUT"
+          echo "sent=true" >> "$GITHUB_OUTPUT"
+          echo "Webhook response: $resp"
+        else
+          echo "No webhook_url configured; alert logged only."
+          echo "sent=false" >> "$GITHUB_OUTPUT"
+          echo 'response={"sent":false}' >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: SMTP 邮件兜底（可选）
+      if: ${{ inputs.smtp_server != '' && inputs.smtp_to != '' }}
+      shell: bash
+      env:
+        SMTP_SERVER: ${{ inputs.smtp_server }}
+        SMTP_PORT: ${{ inputs.smtp_port }}
+        SMTP_USER: ${{ inputs.smtp_user }}
+        SMTP_PASSWORD: ${{ inputs.smtp_password }}
+        SMTP_FROM: ${{ inputs.smtp_from }}
+        SMTP_TO: ${{ inputs.smtp_to }}
+        TITLE: ${{ inputs.title }}
+        BODY: ${{ inputs.body }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        if command -v msmtp >/dev/null 2>&1; then
+          mkdir -p "$HOME/.msmtp"
+          cat > "$HOME/.msmtprc" <<EOF
+        account default
+        host $SMTP_SERVER
+        port $SMTP_PORT
+        from $SMTP_FROM
+        user $SMTP_USER
+        password $SMTP_PASS
+        auth on
+        tls on
+        tls_starttls on
+        EOF
+          printf 'Subject: %s\nTo: %s\n\n%s\n\nRun URL: %s\n' \
+            "$TITLE" "$SMTP_TO" "$BODY" "$RUN_URL" | msmtp -t "$SMTP_TO"
+        else
+          echo "msmtp not available; skipping SMTP fallback."
+        fi
+
+    - name: 上传 payload artifact
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: notify-payload-${{ github.run_id }}-${{ inputs.severity }}
+        path: notify-payload.json
+        if-no-files-found: ignore
