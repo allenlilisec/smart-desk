@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: SmartDesk Insight API (smartdesk-insight)
-  version: 1.0.0-draft
+  version: 1.0.0
   description: >
     智能分析服务内部契约（Python/FastAPI）。覆盖自动分类/定级建议、相似工单检索、统计聚合
     （看板读模型）、通知（站内+邮件）与通知策略、分类纠偏写回。**仅给建议，不持有工单权威状态**：

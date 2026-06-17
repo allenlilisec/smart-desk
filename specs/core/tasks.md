@@ -1,7 +1,7 @@
 # Tasks: smartdesk-core 实现任务分解（P3 / SUP-111）
 
 **Input**: [`specs/core子系统详细设计与实现说明书.md`](../core子系统详细设计与实现说明书.md)（v2.0，已冻结，main 最新）
-**契约唯一事实源**: [`src/openapi/core.yaml`](../../src/openapi/core.yaml)（OpenAPI 3.1，**v1.0.1**，已冻结）
+**契约唯一事实源**: [`src/openapi/core.yaml`](../../src/openapi/core.yaml)（OpenAPI 3.1，**v1.1.0**，已冻结）
 **派生自**: 系统详设 v1.0（§2.2/§4/§6/§9/§12）；spec.md US-1~US-7；data-model.md
 **编制**: 石磊（后端核心负责人 / Committer 委员会召集人）　|　日期：2026-06-15
 
@@ -19,7 +19,7 @@
 
 | 项 | 位置 | 状态 |
 |---|---|---|
-| 对外契约 | `src/openapi/core.yaml` v1.0.1 | ✅ 冻结，17 业务 path + `/healthz` `/readyz` 齐全，与详设 §4.1 逐 path 对齐 |
+| 对外契约 | `src/openapi/core.yaml` v1.1.0 | ✅ 冻结，17 业务 path + `/healthz` `/readyz` 齐全，与详设 §4.1 逐 path 对齐 |
 | 模块详设 | `specs/core子系统详细设计与实现说明书.md` v2.0 | ✅ 冻结，O1–O6 已裁决、里程碑已定稿 |
 | DB 数据模型 | 详设 §3.2 DDL（节选）+ 系统详设 §4.2 | ✅ 设计完成（待落为迁移文件） |
 | 事件清单/信封 | 详设 §5.2 / 系统详设 §6 | ✅ 设计完成（待落为 outbox 实现） |
@@ -34,7 +34,7 @@
 
 | # | 漂移 | 影响 | 处置 |
 |---|---|---|---|
-| D-1 | 详设 §6/§8.2 引用 `core.yaml info.version = 1.0.0`，**实际 main 已是 1.0.1**（PR #33：`Ticket/TicketDetail` 增 `csat_comment`/`csat_rated_at`，`Attachment` 增 `comment_id`） | 文档版本号滞后，**非契约冲突**：1.0.1 为纯附加字段，且 data-model 的 `csat_ratings.comment` / `attachments.comment_id` 已覆盖，schema 不需改 | **以 1.0.1 为准**实现；详设版本引用建议回填 1.0.1（文档级，交资料/架构，不阻塞编码）。`T_CSAT`/`T_ATT` 任务已含这三字段。 |
+| D-1 | 详设 §6/§8.2 引用 `core.yaml info.version = 1.0.0`，**实际 main 已是 1.1.0**（PR #33：`Ticket/TicketDetail` 增 `csat_comment`/`csat_rated_at`，`Attachment` 增 `comment_id`） | 文档版本号滞后，**非契约冲突**：1.1.0 为 1.0.1 之后再次附加字段后的 minor 版本，向后兼容；data-model 的 `csat_ratings.comment` / `attachments.comment_id` 已覆盖，schema 不需改 | **以 1.1.0 为准**实现；详设版本引用建议回填 1.1.0（文档级，交资料/架构，不阻塞编码）。`T_CSAT`/`T_ATT` 任务已含这三字段。 |
 | D-2 | 详设 §4.2 状态机措辞 vs core.yaml `action` enum（O2 已裁决以契约为准） | 无：已裁决，详设 §4.2 已按契约口径收敛 | 实现直接以 core.yaml `TransitionRequest.action` enum 为准 |
 
 ---
@@ -106,7 +106,7 @@
 - [ ] T024 [CORE-A1] [US1] `internal/transition` 状态机执行：`action→from→to` 表校验、非法 409、写 `ticket_status_history`+`ticket_timeline`、幂等键；含 `accept/start/wait_user/resolve/close/reopen(7天窗口,reopen_count+1)/suspend/resume/cancel`；SLA 暂停/恢复联动钩子（依赖 T023,T014）
 - [ ] T025 [P] [CORE-A1] [US1] `internal/ticket` 查询/详情/更新：`GET /tickets`（基础列表）、`GET /tickets/{id}`（`TicketDetail` 含 sla/suggestion/links 聚合，可见性过滤 403/404）、`PATCH /tickets/{id}`（改 title/description/category_id/priority；**priority 变更触发 SlaEngine.Recalc** 钩子；422）
 - [ ] T026 [P] [CORE-A1] [US1] `internal/ticket` watcher：`POST /tickets/{id}/watchers` body `{watch:bool}` → **204**（US-5.3）
-- [ ] T027 [P] [CORE-A1] [US1] `internal/ticket` CSAT：`POST /tickets/{id}/csat` `{score 1..5, comment?}`，仅 resolved/closed 可评否则 **409**；写 `csat_ratings` + 回填 `tickets.csat_score`/**`csat_comment`/`csat_rated_at`（core.yaml 1.0.1，见 D-1）**
+- [ ] T027 [P] [CORE-A1] [US1] `internal/ticket` CSAT：`POST /tickets/{id}/csat` `{score 1..5, comment?}`，仅 resolved/closed 可评否则 **409**；写 `csat_ratings` + 回填 `tickets.csat_score`/**`csat_comment`/`csat_rated_at`（core.yaml 1.1.0，见 D-1）**
 
 **Checkpoint**：单工单全生命周期闭环可独立演示（US1 AC1–AC3）。**A2/A3/B1/B2/B3 解除依赖。**
 
@@ -147,7 +147,7 @@
 
 - [ ] T036 [P] [CORE-B2] [US1] 红线集成测试：上传超 20MB→**413**、非白名单→**422**、越权下载→**403**（US-2.7 AC2）
 - [ ] T037 [P] [CORE-B2] `internal/objstore`：S3/MinIO 客户端 + 预签名（上传/下载）（依赖 T004）
-- [ ] T038 [CORE-B2] [US1] `internal/attachment`：`GET/POST /tickets/{id}/attachments`（`AttachmentInit` 校验 ≤20MB/白名单 → 签上传 URL）、`GET /attachments/{attId}/download-url`（鉴权后签短时下载 URL）；响应含 **`comment_id`（core.yaml 1.0.1，见 D-1）**（依赖 T023,T037）
+- [ ] T038 [CORE-B2] [US1] `internal/attachment`：`GET/POST /tickets/{id}/attachments`（`AttachmentInit` 校验 ≤20MB/白名单 → 签上传 URL）、`GET /attachments/{attId}/download-url`（鉴权后签短时下载 URL）；响应含 **`comment_id`（core.yaml 1.1.0，见 D-1）**（依赖 T023,T037）
 
 ---
 
@@ -228,7 +228,7 @@ Phase1 Setup ──▶ Phase2 Foundational(CORE-0: schema/事件/平台/桩) ─
 
 | 依赖对端 | 类型 | core 侧依赖点 | 阻塞判定 |
 |---|---|---|---|
-| **契约冻结**（梁栋） | 前置门禁 | `core.yaml` v1.0.1 已冻结 | ✅ 已满足，开发 Issue 可解阻塞 |
+| **契约冻结**（梁栋） | 前置门禁 | `core.yaml` v1.1.0 已冻结 | ✅ 已满足，开发 Issue 可解阻塞 |
 | **gateway**（GW-3/GW-5） | 上游调用方 | core 仅信任 gateway 的 service-jwt(aud=core)+mTLS、透传 `X-User-*`。**core 不被 gateway 实现阻塞**（core 定义并校验 serviceAuth 契约即可）；GW-3 聚合 BFF **反向依赖 core 契约就绪**（已就绪） | ⚠️ 单向：core→无阻塞；gateway 依赖 core 契约（已解除） |
 | **insight**（INS-1/2/3/6） | 事件对端 | ① core 发 `ticket.*` 供 insight 消费 —— **core 事件 schema(§5.2) 是 insight 消费前置**，core 须先冻结事件信封；② core 消费 `insight.classification_suggested`（Phase 11）—— **依赖 insight 事件 schema 冻结**，否则 T044 阻塞 | ⚠️ **双向**：core 发布侧领先（T013 须先冻结事件 schema 供 INS）；core 消费侧（T044/M3）**阻塞于 insight `classification_suggested` schema 冻结**，需与 insight Leader 对齐字段（confidence/category/priority/applied） |
 | **PostgreSQL** | 存储 | core OLTP 独享库、golang-migrate | 环境就绪即可，无跨域阻塞 |
