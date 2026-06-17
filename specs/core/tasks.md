@@ -5,15 +5,19 @@
 **派生自**: 系统详设 v1.0（§2.2/§4/§6/§9/§12）；spec.md US-1~US-7；data-model.md
 **编制**: 石磊（后端核心负责人 / Committer 委员会召集人）　|　日期：2026-06-15
 
+> **引用层级**：`src/openapi/core.yaml`（契约唯一事实源）→ `SmartDesk系统详细设计与实现说明书.md`（系统级事实源）→ [`specs/core子系统详细设计与实现说明书.md`](../core子系统详细设计与实现说明书.md)（core 实现级派生）→ 本文（执行清单）→ [`lifecycle-done-gap-drift.md`](lifecycle-done-gap-drift.md)（实现快照）。下游不得突破上游约定。
+>
 > 本清单由 spec-kit `/tasks` 从**已冻结**的 core 详设 v2.0 自顶向下派生，依赖有序、每块可独立交付/测试。任务 ID 沿用详设 §7.1 / 系统详设 §12.1 的 **CORE-\*** 体系（不自创新 ID）；`Tn` 为本清单内的细粒度执行编号。`[P]` = 不同文件、无相互依赖、可并行。`[CORE-x]` = 归属工作块，`[USn]` = 对应系统用户故事。
 >
 > **Tests 纳入说明**：详设 §7.3 把「越权 / 状态机 / 幂等」列为**必过红线（功能+安全）**，集成测试框架已随 SUP-34 合入。故本清单**显式包含测试任务**（非可选）。
+>
+> **术语速查**：`service-jwt`/`serviceAuth` = gateway 签发、aud=core 的服务令牌；`claims` = 令牌中的 `sub/roles/org_id`；`MVP` = 当前 `httpapi/domain/store` 轻量实现；`outbox` = 事务性发件箱（MVP 为 in-memory best-effort）。旧 `X-User-* / X-Org-Id` 明文透传头已废弃。
 
 ---
 
 ## 0. 与 main 现有 `src/` 实现的 done / gap / drift 初判（P4 输入）
 
-> 检视基线：main@`786425d`。结论：**core 尚无任何业务代码实现**，`src/` 仅有契约与占位。下表为 P4（/implement）的起点判定。
+> 检视基线：main@`786425d`（P3 早期）。当前 `src/smartdesk-core/` 已形成**轻量 MVP**：`net/http` 路由 + `internal/domain` + `internal/store`（内存/Postgres 双实现），覆盖工单生命周期主链（建单、状态机、分派、SLA、评论/附件/时间线）。下表按当前事实刷新 done/gap/drift。
 
 ### 0.1 done（已就绪，可直接消费）
 
@@ -27,14 +31,14 @@
 
 ### 0.2 gap（全部待实现 —— 本清单覆盖）
 
-- `src/` 下**无 Go 工程**：仅 `src/openapi/*.yaml` + `src/.gitkeep`。`cmd/`、`internal/`、`migrations/`、`test/`（详设 §6 包布局）**均不存在** → 由 Phase 1/2 起全量新建。
+- `src/smartdesk-core/` 已存在轻量 MVP，但**未按详设 §6 六边形/子域包拆分**，也无 `sqlc`/`oapi-codegen`/`outbox relay`/NATS relay → 由后续 Issue 决定是接受轻量 MVP 事实源还是回归原分层。
 - 无迁移文件（0001–0005）、无 sqlc/oapi-codegen 生成物、无 outbox relay/consumer、无任一 domain 服务、无 CI `api-contract-check` 接线。
 
 ### 0.3 drift（漂移，须在 P4 前对齐）
 
 | # | 漂移 | 影响 | 处置 |
 |---|---|---|---|
-| D-1 | 详设 §6/§8.2 引用 `core.yaml info.version = 1.0.0`，**实际 main 已是 1.1.0**（PR #33：`Ticket/TicketDetail` 增 `csat_comment`/`csat_rated_at`，`Attachment` 增 `comment_id`） | 文档版本号滞后，**非契约冲突**：1.1.0 为 1.0.1 之后再次附加字段后的 minor 版本，且 data-model 的 `csat_ratings.comment` / `attachments.comment_id` 已覆盖，schema 不需改 | **以 1.1.0 为准**实现；详设版本引用已回填 1.1.0（文档级，交资料/架构，不阻塞编码）。`T_CSAT`/`T_ATT` 任务已含这三字段。 |
+| D-1 | 详设 §6/§8.2 引用 `core.yaml info.version = 1.0.0`，**实际 main 已是 1.1.0**（PR #27 去 `-draft` 为 1.0.0，PR #33：`Ticket/TicketDetail` 增 `csat_comment`/`csat_rated_at`，`Attachment` 增 `comment_id`） | 文档版本号滞后，**非契约冲突**：1.1.0 在 1.0.0 之后附加字段提升 minor 版本，且 data-model 的 `csat_ratings.comment` / `attachments.comment_id` 已覆盖，schema 不需改 | **以 1.1.0 为准**实现；详设版本引用已回填 1.1.0（文档级，交资料/架构，不阻塞编码）。`T_CSAT`/`T_ATT` 任务已含这三字段。 |
 | D-2 | 详设 §4.2 状态机措辞 vs core.yaml `action` enum（O2 已裁决以契约为准） | 无：已裁决，详设 §4.2 已按契约口径收敛 | 实现直接以 core.yaml `TransitionRequest.action` enum 为准 |
 
 ---
@@ -43,10 +47,10 @@
 
 **目的**：建立 Go 工程结构与工具链，使空服务可编译启动。**阻塞后续所有阶段。**
 
-- [ ] T001 [CORE-0] 在 `src/`（或仓库约定的 `smartdesk-core/`）初始化 Go module（Go 1.22+），建立详设 §6 包骨架目录：`cmd/smartdesk-core/`、`internal/{appconfig,httpapi/{gen,middleware},domain,ticket,transition,assignment,sla,comment,attachment,link,timeline,config,repository,events,objstore,platform}`、`migrations/`、`test/`
-- [ ] T002 [P] [CORE-0] 接入工具链与固定版本：`oapi-codegen`、`sqlc`、`golang-migrate`、`nats.go`、`pgx/v5`、`chi`、`slog`、OTel；`Makefile`/`taskfile`（gen / migrate / lint / test 目标）
-- [ ] T003 [P] [CORE-0] 配置 lint/format（golangci-lint、gofumpt）与 CI 工作流骨架（编译 + 单测 + 后续接 `api-contract-check`）
-- [ ] T004 [P] [CORE-0] `internal/appconfig`：envconfig 加载（DB/NATS/OSS/端口/JWT 公钥等），**仅监听内网**端口（详设 §2.3 红线）
+- [x] T001 [CORE-0] 在 `src/`（或仓库约定的 `smartdesk-core/`）初始化 Go module（Go 1.22+），建立详设 §6 包骨架目录：`cmd/smartdesk-core/`、`internal/{appconfig,httpapi/{gen,middleware},domain,ticket,transition,assignment,sla,comment,attachment,link,timeline,config,repository,events,objstore,platform}`、`migrations/`、`test/` — **MVP**：module、`cmd/`、`migrations/`、`internal/domain`/`httpapi`/`store` 已存在；目标子域包尚未拆分（D-2）
+- [ ] T002 [P] [CORE-0] 接入工具链与固定版本：`oapi-codegen`、`sqlc`、`golang-migrate`、`nats.go`、`pgx/v5`、`chi`、`slog`、OTel；`Makefile`/`taskfile`（gen / migrate / lint / test 目标） — **gap**：`golang-migrate`/`pgx`/`slog` 已用；`oapi-codegen`/`sqlc`/`chi`/`nats.go` 未接入
+- [ ] T003 [P] [CORE-0] 配置 lint/format（golangci-lint、gofumpt）与 CI 工作流骨架（编译 + 单测 + 后续接 `api-contract-check`） — **gap**：CI 未接 `api-contract-check`
+- [x] T004 [P] [CORE-0] `internal/appconfig`：envconfig 加载（DB/NATS/OSS/端口/JWT 公钥等），**仅监听内网**端口（详设 §2.3 红线） — **MVP**：配置加载已实现，仅监听内网
 
 ---
 
@@ -56,20 +60,20 @@
 
 ### 2.1 DB schema 与迁移（**关键代码：DB 迁移 → 集体检视红线**）
 
-- [ ] T005 [CORE-0] `migrations/0001_init.{up,down}.sql`：`roles`(全局枚举,无 org_id 例外)、`users`、`user_roles`、`categories`、`sla_policies`、`sla_policy_targets`（详设 §3.2；`db-migration` 技能生成执行）
-- [ ] T006 [CORE-0] `migrations/0002_tickets.{up,down}.sql`：`tickets`（八态）、`ticket_status_history`、`ticket_timeline` + 全部读路径索引（含 FTS gin）（依赖 T005）
-- [ ] T007 [CORE-0] `migrations/0003_workflow.{up,down}.sql`：`assignments`、`comments`、`attachments`、`ticket_links`、`sla_timers`、`watchers`、`csat_ratings`（依赖 T006）
-- [ ] T008 [P] [CORE-0] `migrations/0004_infra.{up,down}.sql`：`idempotency_keys`、`outbox_events`、`processed_events`（R3 实现增表，依赖 T005）
+- [x] T005 [CORE-0] `migrations/0001_init.{up,down}.sql`：`roles`(全局枚举,无 org_id 例外)、`users`、`user_roles`、`categories`、`sla_policies`、`sla_policy_targets`（详设 §3.2；`db-migration` 技能生成执行） — **MVP**：`0001_init.sql` 压缩基线已存在；`roles`/`user_roles` 简化为 `users.roles TEXT[]`，`sla_policy_targets` 简化为 `sla_policies.targets JSONB`（D-5）
+- [ ] T006 [CORE-0] `migrations/0002_tickets.{up,down}.sql`：`tickets`（八态）、`ticket_status_history`、`ticket_timeline` + 全部读路径索引（含 FTS gin）（依赖 T005） — **gap**：`ticket_status_history` 缺失；`tickets` 在 `0001_init` 中，`ticket_timeline` 已存在；FTS 未实现
+- [x] T007 [CORE-0] `migrations/0003_workflow.{up,down}.sql`：`assignments`、`comments`、`attachments`、`ticket_links`、`sla_timers`、`watchers`、`csat_ratings`（依赖 T006） — **MVP**：`0003_attachments.sql` 已存在；`assignments`/`comments`/`sla_timers` 在 `0001_init` 中；`watchers`/`csat_ratings` 缺失
+- [ ] T008 [P] [CORE-0] `migrations/0004_infra.{up,down}.sql`：`idempotency_keys`、`outbox_events`、`processed_events`（R3 实现增表，依赖 T005） — **gap**：`outbox_events` 缺失；`idempotency_keys`/`processed_events` 在 `0001_init` 中但缺少 `request_hash/response_json/status_code`
 
 ### 2.2 平台/出站适配器与契约桩
 
-- [ ] T009 [P] [CORE-0] `internal/platform`：pgx 连接池、NATS JetStream 连接、slog 结构化 JSON（统一 `trace_id/request_id/org_id/actor_id`）、OTel、`/healthz`(liveness) + `/readyz`(探测 DB+NATS)（核对 core.yaml `security:[]`）
-- [ ] T010 [CORE-0] `internal/httpapi/gen`：`oapi-codegen` 从 `src/openapi/core.yaml` 生成 types + chi server 桩（契约先行；后续 CI 跑 `api-contract-check` 阻止漂移）（依赖 T002）
-- [ ] T011 [CORE-0] `internal/httpapi/middleware`：`recover → requestID(透传 X-Request-Id) → serviceAuth(校验 service-jwt 签名+aud=core) → userCtx(解析 X-User-Id/Roles/X-Org-Id) → metrics`（详设 §2.2/§5.1）
-- [ ] T012 [CORE-0] `internal/repository`：pgx+sqlc Tx 管理基座 + `queries/*.sql` 脚手架；统一「业务表 + timeline + outbox」单事务三写工具（依赖 T005–T008,T010）
-- [ ] T013 [CORE-0] `internal/events`：事件信封(`event_id/event_type/occurred_at/org_id/ticket_id/actor_id/version/payload`)、outbox 写入 API、**outbox relay**（`FOR UPDATE SKIP LOCKED`，至少一次、多副本安全）→ NATS `smartdesk.<domain>.<event>`（依赖 T009,T012）
-- [ ] T014 [CORE-0] `internal/domain`：纯领域内核 —— 状态机迁移表（§4.2）、SLA 计算函数、可见性/领域授权规则、统一错误码（`Error{code,message,details?,trace_id}` 映射 400/401/403/404/409/413/422）
-- [ ] T015 [P] [CORE-0] **集成测试地基**：testcontainers（PG+NATS）夹具，挂接 SUP-34 框架；幂等/越权/状态机红线用例骨架（详设 §7.3）
+- [x] T009 [P] [CORE-0] `internal/platform`：pgx 连接池、NATS JetStream 连接、slog 结构化 JSON（统一 `trace_id/request_id/org_id/actor_id`）、OTel、`/healthz`(liveness) + `/readyz`(探测 DB+NATS)（核对 core.yaml `security:[]`） — **MVP**：pgx/slog/healthz 已存在；NATS JetStream 未接；`/readyz` 不强制探测 DB/NATS（D-4）
+- [ ] T010 [CORE-0] `internal/httpapi/gen`：`oapi-codegen` 从 `src/openapi/core.yaml` 生成 types + chi server 桩（契约先行；后续 CI 跑 `api-contract-check` 阻止漂移）（依赖 T002） — **gap**：手写 `net/http`，未生成
+- [x] T011 [CORE-0] `internal/httpapi/middleware`：`recover → requestID(透传 X-Request-Id，仅链路追踪) → serviceAuth(校验 service-jwt 签名+aud=core) → userCtx(从已验签 claims 提取 sub/roles/org_id) → metrics`（详设 §2.2/§5.1） — **MVP**：中间件链内联在 `Server` 中，已按 claims 口径实现
+- [ ] T012 [CORE-0] `internal/repository`：pgx+sqlc Tx 管理基座 + `queries/*.sql` 脚手架；统一「业务表 + timeline + outbox」单事务三写工具（依赖 T005–T008,T010） — **gap**：`internal/store` 手写 SQL，无 sqlc/ports 抽象；无 outbox 单事务三写
+- [ ] T013 [CORE-0] `internal/events`：事件信封(`event_id/event_type/occurred_at/org_id/ticket_id/actor_id/version/payload`)、outbox 写入 API、**outbox relay**（`FOR UPDATE SKIP LOCKED`，至少一次、多副本安全）→ NATS `smartdesk.<domain>.<event>`（依赖 T009,T012） — **gap**：`internal/event` in-memory best-effort，无 outbox/NATS（D-3）
+- [x] T014 [CORE-0] `internal/domain`：纯领域内核 —— 状态机迁移表（§4.2）、SLA 计算函数、可见性/领域授权规则、统一错误码（`Error{code,message,details?,trace_id}` 映射 400/401/403/404/409/413/422） — **MVP**：已实现
+- [ ] T015 [P] [CORE-0] **集成测试地基**：testcontainers（PG+NATS）夹具，挂接 SUP-34 框架；幂等/越权/状态机红线用例骨架（详设 §7.3） — **gap**：httptest + Postgres 集成测试已存在，无 testcontainers/NATS
 
 **Checkpoint**：空服务可启动，`/healthz`/`/readyz` 通过，`ticket.created` 可经 outbox 投递 + 消费去重；契约桩就绪。
 
@@ -80,11 +84,11 @@
 **Goal**：提供权威配置主数据；**先于 A3**（A3 需 SLA 策略）与 A1（建单需 users/categories）就绪。
 **Independent Test**：`/config/*` 全量 CRUD 通过；种子数据可查。
 
-- [ ] T016 [CORE-C] `migrations/0005_seed`：`roles` 枚举、SLA v1 基线（P1 15m/4h、P2 60m/1bd、P3 240m/3bd、P4 1bd/5bd，bd 按 8h/日折算）、`categories` 初始集（IT/账号权限/办公行政/人事/财务/其他）（依赖 T005）
-- [ ] T017 [P] [CORE-C] [US7] `internal/config` taxonomy：`GET/POST /config/categories`、`PATCH/DELETE /config/categories/{catId}`（移动父节点/启停/排序；**被引用删除 409**）
-- [ ] T018 [P] [CORE-C] [US7] `internal/config` SLA 策略：`GET /config/sla-policies`、`PUT /config/sla-policies`（admin，改数值不改契约形态）
-- [ ] T019 [P] [CORE-C] [US7] `internal/config` 用户角色目录：`GET/POST /config/users`、`PUT /config/users/{userId}/roles`（一账号可兼多角色；core 仅存 `credential_ref`）
-- [ ] T020 [CORE-C] 契约测试：`/config/*` 全量响应对照 core.yaml schema（依赖 T010）
+- [x] T016 [CORE-C] `migrations/0005_seed`：`roles` 枚举、SLA v1 基线（P1 15m/4h、P2 60m/1bd、P3 240m/3bd、P4 1bd/5bd，bd 按 8h/日折算）、`categories` 初始集（IT/账号权限/办公行政/人事/财务/其他）（依赖 T005） — **MVP**：已实现
+- [x] T017 [P] [CORE-C] [US7] `internal/config` taxonomy：`GET/POST /config/categories`、`PATCH/DELETE /config/categories/{catId}`（移动父节点/启停/排序；**被引用删除 409**） — **MVP**：已实现（`config_handlers.go`）
+- [x] T018 [P] [CORE-C] [US7] `internal/config` SLA 策略：`GET /config/sla-policies`、`PUT /config/sla-policies`（admin，改数值不改契约形态） — **MVP**：已实现
+- [x] T019 [P] [CORE-C] [US7] `internal/config` 用户角色目录：`GET/POST /config/users`、`PUT /config/users/{userId}/roles`（一账号可兼多角色；core 仅存 `credential_ref`） — **MVP**：已实现
+- [ ] T020 [CORE-C] 契约测试：`/config/*` 全量响应对照 core.yaml schema（依赖 T010） — **gap**：未接入自动化 `api-contract-check`
 
 **Checkpoint**：配置主数据可用，A1/A3 解除前置依赖。
 
@@ -97,16 +101,16 @@
 
 ### Tests（红线，先写后实现）
 
-- [ ] T021 [P] [CORE-A1] [US1] 契约测试：`POST/GET /tickets`、`GET/PATCH /tickets/{id}`、`/transitions`、`/watchers`、`/csat` 响应对照 core.yaml
-- [ ] T022 [P] [CORE-A1] [US1] 红线集成测试：**幂等**（Idempotency-Key 命中返回首次结果 / hash 不一致 409）+ **非法状态跃迁 409** + **降级**（AI/NATS 不可用建单仍 201，SC-002）
+- [ ] T021 [P] [CORE-A1] [US1] 契约测试：`POST/GET /tickets`、`GET/PATCH /tickets/{id}`、`/transitions`、`/watchers`、`/csat` 响应对照 core.yaml — **gap**：未接入自动化 `api-contract-check`
+- [ ] T022 [P] [CORE-A1] [US1] 红线集成测试：**幂等**（Idempotency-Key 命中返回首次结果 / hash 不一致 409）+ **非法状态跃迁 409** + **降级**（AI/NATS 不可用建单仍 201，SC-002） — **partial**：非法跃迁 409/降级已实现；幂等缺 request_hash 与 409 逻辑
 
 ### 实现
 
-- [ ] T023 [CORE-A1] [US1] `internal/ticket` 建单：单事务 `idempotency 检查 → 生成 number(SD-2026-NNNNNN, FOR UPDATE 行锁) → tickets(new) → SlaEngine.Start 占位 → timeline(ticket_created) → outbox(ticket.created)` → 201（不等 AI，详设 §2.2 链）
-- [ ] T024 [CORE-A1] [US1] `internal/transition` 状态机执行：`action→from→to` 表校验、非法 409、写 `ticket_status_history`+`ticket_timeline`、幂等键；含 `accept/start/wait_user/resolve/close/reopen(7天窗口,reopen_count+1)/suspend/resume/cancel`；SLA 暂停/恢复联动钩子（依赖 T023,T014）
-- [ ] T025 [P] [CORE-A1] [US1] `internal/ticket` 查询/详情/更新：`GET /tickets`（基础列表）、`GET /tickets/{id}`（`TicketDetail` 含 sla/suggestion/links 聚合，可见性过滤 403/404）、`PATCH /tickets/{id}`（改 title/description/category_id/priority；**priority 变更触发 SlaEngine.Recalc** 钩子；422）
-- [ ] T026 [P] [CORE-A1] [US1] `internal/ticket` watcher：`POST /tickets/{id}/watchers` body `{watch:bool}` → **204**（US-5.3）
-- [ ] T027 [P] [CORE-A1] [US1] `internal/ticket` CSAT：`POST /tickets/{id}/csat` `{score 1..5, comment?}`，仅 resolved/closed 可评否则 **409**；写 `csat_ratings` + 回填 `tickets.csat_score`/**`csat_comment`/`csat_rated_at`（core.yaml 1.1.0，见 D-1）**
+- [x] T023 [CORE-A1] [US1] `internal/ticket` 建单：单事务 `idempotency 检查 → 生成 number(SD-2026-NNNNNN, FOR UPDATE 行锁) → tickets(new) → SlaEngine.Start 占位 → timeline(ticket_created) → outbox(ticket.created)` → 201（不等 AI，详设 §2.2 链） — **MVP**：`createTicket` 已实现；outbox 为 in-memory
+- [x] T024 [CORE-A1] [US1] `internal/transition` 状态机执行：`action→from→to` 表校验、非法 409、写 `ticket_status_history`+`ticket_timeline`、幂等键；含 `accept/start/wait_user/resolve/close/reopen(7天窗口,reopen_count+1)/suspend/resume/cancel`；SLA 暂停/恢复联动钩子（依赖 T023,T014） — **MVP**：状态机已实现；`ticket_status_history` 未落表
+- [x] T025 [P] [CORE-A1] [US1] `internal/ticket` 查询/详情/更新：`GET /tickets`（基础列表）、`GET /tickets/{id}`（`TicketDetail` 含 sla/suggestion/links 聚合，可见性过滤 403/404）、`PATCH /tickets/{id}`（改 title/description/category_id/priority；**priority 变更触发 SlaEngine.Recalc** 钩子；422） — **MVP**：已实现；`sla_state` 过滤未实现，requester 可见性 H-3 待闭环
+- [ ] T026 [P] [CORE-A1] [US1] `internal/ticket` watcher：`POST /tickets/{id}/watchers` body `{watch:bool}` → **204**（US-5.3） — **gap**：未实现
+- [ ] T027 [P] [CORE-A1] [US1] `internal/ticket` CSAT：`POST /tickets/{id}/csat` `{score 1..5, comment?}`，仅 resolved/closed 可评否则 **409**；写 `csat_ratings` + 回填 `tickets.csat_score`/**`csat_comment`/`csat_rated_at`（core.yaml 1.1.0，见 D-1）** — **gap**：未实现
 
 **Checkpoint**：单工单全生命周期闭环可独立演示（US1 AC1–AC3）。**A2/A3/B1/B2/B3 解除依赖。**
 
@@ -116,8 +120,8 @@
 
 **Goal**：手工/自动/改派/升级。依赖 A1。
 
-- [ ] T028 [P] [CORE-A2] [US4] 契约+集成测试：`POST /tickets/{id}/assignments`（kind 枚举、越权 403）
-- [ ] T029 [CORE-A2] [US4] `internal/assignment`：`kind∈{manual,auto,reassign,escalate}` → 写 `assignments`+timeline → outbox `ticket.assigned`/`ticket.reassigned`；规则自动分派；201 Assignment（依赖 T024）
+- [x] T028 [P] [CORE-A2] [US4] 契约+集成测试：`POST /tickets/{id}/assignments`（kind 枚举、越权 403） — **MVP**：集成测试已覆盖
+- [x] T029 [CORE-A2] [US4] `internal/assignment`：`kind∈{manual,auto,reassign,escalate}` → 写 `assignments`+timeline → outbox `ticket.assigned`/`ticket.reassigned`；规则自动分派；201 Assignment（依赖 T024） — **MVP**：手工/改派已实现；`auto`/`escalate` 为占位，未与 SLA 超时升级联动
 
 ---
 
@@ -125,10 +129,10 @@
 
 **Goal**：启动/暂停/恢复/重算 + 后台扫描（warning/breached）。依赖 A1 + CORE-C 策略。
 
-- [ ] T030 [P] [CORE-A3] [US5] 红线集成测试：计时启动、`wait_user` 暂停 / `start`·`user_reply` 恢复顺延、临近/超时事件（US-5 AC1–3，SC-005）
-- [ ] T031 [CORE-A3] [US5] `internal/sla` SlaEngine：`Start`(建单按 priority 选 target 落 sla_timers)、`Pause/Resume`(paused_total_seconds 顺延)、`Recalc`(priority 变更)；落实 T023/T024 的占位钩子（依赖 T023,T024,T016）
-- [ ] T032 [CORE-A3] [US5] `GET /tickets/{id}/sla` 返回 `SlaTimer`（response/resolve due、paused、breached）；404
-- [ ] T033 [CORE-A3] [US5] 后台扫描器：`idx_sla_due` 扫未达成→发 outbox `ticket.sla_warning`/`ticket.sla_breached`、置 breached 标记（依赖 T013,T031）
+- [x] T030 [P] [CORE-A3] [US5] 红线集成测试：计时启动、`wait_user` 暂停 / `start`·`user_reply` 恢复顺延、临近/超时事件（US-5 AC1–3，SC-005） — **MVP**：启动/暂停/恢复/顺延已测；临近/超时事件未实现
+- [x] T031 [CORE-A3] [US5] `internal/sla` SlaEngine：`Start`(建单按 priority 选 target 落 sla_timers)、`Pause/Resume`(paused_total_seconds 顺延)、`Recalc`(priority 变更)；落实 T023/T024 的占位钩子（依赖 T023,T024,T016） — **MVP**：已实现
+- [x] T032 [CORE-A3] [US5] `GET /tickets/{id}/sla` 返回 `SlaTimer`（response/resolve due、paused、breached）；404 — **MVP**：已实现
+- [ ] T033 [CORE-A3] [US5] 后台扫描器：`idx_sla_due` 扫未达成→发 outbox `ticket.sla_warning`/`ticket.sla_breached`、置 breached 标记（依赖 T013,T031） — **gap**：未实现
 
 ---
 
@@ -155,7 +159,7 @@
 
 **Goal**：列表过滤增强 + 时间线/审计。依赖 A1。
 
-- [ ] T039 [P] [CORE-B3] [US1] `internal/ticket` 列表增强：`GET /tickets` 全过滤（`status/priority/assignee_id/requester_id/group_id/category_id/q/sla_state`+`sort`+分页 `page_size≤100`）；`q` 走 FTS；返回 `TicketPage`（升级 T025 基础列表）— **partial/gap（H-3）**：代码已支持 status/priority/assignee_id/requester_id/group_id/category_id/q/sort/page/page_size 与 org scope；requester 与同 org 坐席的工单范围授权未区分，已转 [SUP-285](mention://issue/1af7a39e-3ce7-4003-9bda-a05c8bbbd503) H-3 gap 闭环；缺 `sla_state` 过滤，Postgres `q` 为 `LIKE` 非 FTS。
+- [x] T039 [P] [CORE-B3] [US1] `internal/ticket` 列表增强：`GET /tickets` 全过滤（`status/priority/assignee_id/requester_id/group_id/category_id/q/sla_state`+`sort`+分页 `page_size≤100`）；`q` 走 FTS；返回 `TicketPage`（升级 T025 基础列表）— **partial/gap（H-3）**：代码已支持 status/priority/assignee_id/requester_id/group_id/category_id/q/sort/page/page_size 与 org scope；requester 与同 org 坐席的工单范围授权未区分，已转 [SUP-285](mention://issue/1af7a39e-3ce7-4003-9bda-a05c8bbbd503) H-3 gap 闭环；缺 `sla_state` 过滤，Postgres `q` 为 `LIKE` 非 FTS。
 - [x] T040 [P] [CORE-B3] [US1] `internal/timeline`：`GET /tickets/{id}/timeline` 正序、只读追加、分页 `TimelinePage`（US-2.8）（见 `src/smartdesk-core/internal/httpapi/collaboration.go`、`src/smartdesk-core/internal/store/{memory,postgres}.go`）
 
 ---
@@ -229,7 +233,7 @@ Phase1 Setup ──▶ Phase2 Foundational(CORE-0: schema/事件/平台/桩) ─
 | 依赖对端 | 类型 | core 侧依赖点 | 阻塞判定 |
 |---|---|---|---|
 | **契约冻结**（梁栋） | 前置门禁 | `core.yaml` v1.1.0 已冻结 | ✅ 已满足，开发 Issue 可解阻塞 |
-| **gateway**（GW-3/GW-5） | 上游调用方 | core 仅信任 gateway 的 service-jwt(aud=core)+mTLS、透传 `X-User-*`。**core 不被 gateway 实现阻塞**（core 定义并校验 serviceAuth 契约即可）；GW-3 聚合 BFF **反向依赖 core 契约就绪**（已就绪） | ⚠️ 单向：core→无阻塞；gateway 依赖 core 契约（已解除） |
+| **gateway**（GW-3/GW-5） | 上游调用方 | core 仅信任 gateway 的 service-jwt(aud=core)+mTLS，身份由 claims 承载；旧的 `X-User-* / X-Org-Id` 明文透传头**已废弃**。**core 不被 gateway 实现阻塞**（core 定义并校验 serviceAuth 契约即可）；GW-3 聚合 BFF **反向依赖 core 契约就绪**（已就绪） | ⚠️ 单向：core→无阻塞；gateway 依赖 core 契约（已解除） |
 | **insight**（INS-1/2/3/6） | 事件对端 | ① core 发 `ticket.*` 供 insight 消费 —— **core 事件 schema(§5.2) 是 insight 消费前置**，core 须先冻结事件信封；② core 消费 `insight.classification_suggested`（Phase 11）—— **依赖 insight 事件 schema 冻结**，否则 T044 阻塞 | ⚠️ **双向**：core 发布侧领先（T013 须先冻结事件 schema 供 INS）；core 消费侧（T044/M3）**阻塞于 insight `classification_suggested` schema 冻结**，需与 insight Leader 对齐字段（confidence/category/priority/applied） |
 | **PostgreSQL** | 存储 | core OLTP 独享库、golang-migrate | 环境就绪即可，无跨域阻塞 |
 | **NATS JetStream** | 事件总线 | Stream `SMARTDESK_EVENTS` | 不可用时 outbox 兜底，**不阻塞主流程** |
