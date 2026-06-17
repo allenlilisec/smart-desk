@@ -19,6 +19,7 @@
 | §10（新增） | 验收标准规范基线（安全/性能/可用性/代码质量） | 补 §10.3 要求的规范基线声明（修订 R1） |
 | §3 存储 | 刷新令牌存储策略更新为 OQ-W2 方案 A（HttpOnly Cookie，同源代理） | 梁栋架构裁定 OQ-W2（2026-06-15） |
 | §9 开放事项 | 回写 OQ-W1/W2/W3 架构裁决结论 | 梁栋架构裁定（2026-06-15），合入前收尾 |
+| §2 布局/导航 | 新增 §2.3 全局 AppShell（左侧深色主导航 + 顶部轻工具栏）作为 portal/desk/admin/dashboard 统一信息架构；原「路由与布局」表顺延为 §2.4，统一引用 AppShell | 梁栋架构裁定 SUP-270/SUP-284（2026-06-17），CEO 拍板方案 A：P0 按 Figma 重整壳层与令牌 |
 | §11（新增） | P4 实现状态同步：按 `smartdesk-web@9ed0d0b` 标注 done/gap/drift 与处置 | SUP-262 要求对齐当前代码、任务清单与系统详设 |
 
 ---
@@ -127,17 +128,91 @@
 └────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 2.3 路由与布局
+### 2.3 全局 AppShell（统一信息架构）
+
+> **来源**：CEO 决策方案 A（2026-06-17）+ 梁栋架构裁定（SUP-270 / SUP-284）。本节是结构性决策，凡 `(portal) / (desk) / (admin) / (dashboard)` 四个路由组**强制共享**该 AppShell；任何脱离 AppShell 的页面级布局须在合入前通过架构裁决，否则一律驳回。
+
+#### 2.3.1 壳层结构
+
+```
+┌───────────────────────────────────────────────────────────────────────────┐
+│ 顶部轻工具栏 (TopBar，h=48px)                                              │
+│  · 左：当前模块面包屑/页面标题（不放主导航）                                 │
+│  · 中：全局搜索（M3+，P0 占位）                                             │
+│  · 右：通知铃铛 · 主题/语言切换（M3+） · 当前用户菜单（display_name + 登出） │
+├──────────┬────────────────────────────────────────────────────────────────┤
+│ 左侧深色  │ 内容区 (main)                                                  │
+│ 主导航    │  · 各路由组的页面内容（list/detail/board/form…）               │
+│ (Sidebar) │  · 不重复渲染顶栏/侧栏；不允许在 main 内再起一套站点级导航      │
+│ w=224px   │                                                                │
+│ 折叠 64px │                                                                │
+└──────────┴────────────────────────────────────────────────────────────────┘
+```
+
+- **左侧主导航（Sidebar，深色品牌蓝/深灰）**：站点级一级入口（门户 / 工作台 / 管理后台 / 数据看板）+ 角色范围内的二级入口；折叠态仅图标 64px，展开 224px。设计令牌按 Figma 收敛（详见 [P0 实施清单](#7-任务分解与里程碑)），禁用粉/珊瑚 FAB。
+- **顶部轻工具栏（TopBar，浅色）**：模块上下文（标题/面包屑）+ 全局动作（搜索/通知/用户）；**不放一级导航**，避免与左栏重复。
+- **内容区**：业务页面唯一可变区域；坐席工作台的「左队列 / 中详情 / 右上下文」三栏视觉骨架在 main 内自布局，不替代 AppShell。
+
+#### 2.3.2 导航可见性（角色驱动，零契约）
+
+- 导航项可见性**唯一**依据：`GET /auth/me`（gateway 契约 `#/components/schemas/Me`）返回的 `roles: string[]`（枚举 `requester | agent | lead | manager | admin`，详见 [gateway.yaml §components.schemas.Me](../src/openapi/gateway.yaml)）。
+- 实现路径：左栏每项由 `<RoleGuard allow={[...]}>` 包裹，与 §6.2 现有 `RoleGuard` 组件复用（不新增 RBAC 数据源、不在前端硬编码角色映射表）。
+- 入口路由策略（§1.2 末段）不变：根路径 `/` 仍按 `me.roles` 重定向；多角色优先级 `admin > manager > lead > agent > requester`。
+- **零契约硬门禁**：AppShell 显示用户名/角色仅消费 `Me.user_id / display_name / roles`，**不得**承诺 `avatar_url / email / org_name` 等 gateway.yaml 未定义字段；缺字段一律占位或隐藏 UI 元素，**严禁注入静态假数据**。
+
+#### 2.3.3 视觉基线与红线
+
+| 项 | 决定 | 红线 |
+|---|---|---|
+| 视觉北极星 | [Figma 四屏](https://www.figma.com/make/6yPmCGPfb6E4JT8YYmWpeN/Smartdesk-Web-Portal?preview-route=%2Fportal)：登录 / 门户 / 坐席工作台 / 管理后台 | 仅作设计规范 + 交互参照 |
+| 营销/愿景图 | 谷歌生成图 | **不进入开发基线**，禁止据此设界面 |
+| figma.com/**make** 产物 | AI 生成 React/CSS | **严禁照搬代码**；必须在既有 Next.js App Router + shadcn/ui + Radix + Tailwind + next-intl + TanStack Query 栈上**重写实现**、接真实契约。违者引入双套设计系统、破坏 SSR/i18n/契约绑定，按合入门禁驳回 |
+| WCAG 合规 | AA | 新主色 / 浅灰说明文字 / 蓝底白字逐对经 axe-core + Lighthouse 实测，正文 4.5:1、大字/图形 3:1 过线方可合入，不凭观感 |
+
+#### 2.3.4 P0 范围纪律（壳层、令牌、基础组件样式）
+
+P0 改造的**唯一**变更面：
+
+1. 新增/替换 AppShell（Sidebar + TopBar 布局组件，§6.2 新增条目）。
+2. 收敛设计令牌：品牌蓝、浅灰工作区、白色内容卡、状态色、字阶、间距栅格（按 Figma 锁定，废弃粉/珊瑚 FAB）。
+3. 基础组件视觉刷新：`Button / DataTable / StatusBadge / PriorityTag / EmptyState / Card` 等仅样式层调整。
+
+**保留不动**（CTO 范围纪律）：
+
+- 现有路由分组与深链（§2.4）、`(auth)` 全屏布局。
+- 业务组件 `TicketQueue / TicketList / TicketDetailPanel / TransitionBar / SuggestionPanel / SimilarList` 的功能与数据流。
+- `RoleGuard`、TanStack Query 数据层、`apiClient`、鉴权/刷新流（§3 / §4.1 / §4.7）。
+- 工单八态、状态机 UI（§6.3）。
+
+P0 实施清单与子任务派发归 SUP-270 子链（先拆后派），本 spec 仅冻结口径，不重复列任务。
+
+#### 2.3.5 缺口与降级（右栏客户上下文）
+
+- 坐席工作台「右栏 · 客户上下文 / 历史工单 / 满意度趋势」在 gateway.yaml 当前定稿中**无对应字段**（无 `requester_id` 透传，无按提单人过滤的工单查询参数，无 CSAT 聚合视图）。
+- P0 处理：右栏**只落视觉骨架**（卡片占位 + 「待接入」空态），**严禁假数据**。
+- 解阻塞依赖 [SUP-280](mention://issue/43b84fd4-5dbb-40a0-b520-b3677777d0a9)：gateway 透 `requester_id` + 历史工单按 requester 过滤的契约扩展，梁栋批准 → 秦诺 `api-contract-check` 通过 → 前端再实装数据接入。
+- 数据看板图表骨架按 SUP-270 归 **P1**，不进 06-18 必达窗口。
+
+#### 2.3.6 与契约的一致性结论（架构确认）
+
+- 本节描述的 IA 仅消费 `GET /auth/me` 返回的 `Me.{user_id, display_name, roles}`，未引入超出 `gateway.yaml` 的字段承诺。
+- 右栏客户上下文、数据看板按 requester 维度的聚合视图属契约缺口，已明确走 SUP-280 解决，不在 P0 落地实数据。
+- 经逐项核对，**IA 与现有契约不冲突**；spec 与 SUP-270 当前定稿一致。
+
+### 2.4 路由分组与守卫
 
 | 路由组 | 路径示例 | 布局 | 守卫角色 |
 |---|---|---|---|
-| `(auth)` | `/login` | 全屏居中 | 公开 |
-| `(portal)` | `/portal`, `/portal/tickets`, `/portal/tickets/[id]` | 顶部导航 + 内容区 | `requester`+（登录用户） |
-| `(desk)` | `/desk`, `/desk/tickets/[id]` | 左队列右详情（≥1280px） | `agent`, `lead` |
-| `(admin)` | `/admin/categories`, `/admin/users`, … | 侧边栏 + 内容 | `admin` |
-| `(dashboard)` | `/dashboard`, `/dashboard/[metric]` | 顶栏筛选 + 图表网格 | `manager`, `lead`（只读） |
+| `(auth)` | `/login` | 全屏居中（**不套 AppShell**） | 公开 |
+| `(portal)` | `/portal`, `/portal/tickets`, `/portal/tickets/[id]` | 全局 AppShell + 宽屏响应式栅格（主列表单 + 次列非阻塞信息） | `requester`+（登录用户） |
+| `(desk)` | `/desk`, `/desk/tickets/[id]` | 全局 AppShell + 工作台三栏（左队列 / 中详情 / 右上下文骨架，≥1280px） | `agent`, `lead` |
+| `(admin)` | `/admin/categories`, `/admin/users`, `/admin/sla-policies`, `/admin/notification-policies` | 全局 AppShell + 表格内容（P0 只读零契约，搜索/过滤/编辑单独立项） | `admin` |
+| `(dashboard)` | `/dashboard`, `/dashboard/[metric]` | 全局 AppShell + 顶栏筛选 + 图表网格 | `manager`, `lead`（只读） |
 
-**响应式**：`<1280px` 坐席工作台退化为列表→详情全屏导航（保留深链 `/desk/tickets/[id]`）。
+**响应式**：
+
+- `<1280px`：左栏自动折叠为图标态（64px）；坐席工作台「中详情 / 右上下文」退化为列表→详情全屏导航（保留深链 `/desk/tickets/[id]`）。
+- `<768px`：左栏隐藏为抽屉式（TopBar 触发），AppShell 自身仍生效。
 
 ---
 
