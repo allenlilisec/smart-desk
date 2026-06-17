@@ -501,7 +501,7 @@ Idempotency-Key: <透传>
 | agent/lead 组内范围 | 一期 agent 可见全组 vs 仅本人 | 二期细化 `group_id` 注入；一期可先全组可见 |
 | GW-3 与下游就绪顺序 | core/insight 未就绪阻塞 BFF | mock/stub 保持契约 e2e；见 §8.3 |
 | 契约 CI（GW-6 级能力） | api-contract-check 纳入 PR 门禁 | 秦诺维护；M4 前落地 |
-| TicketAggregate.similar 字段 | gateway.yaml schema 含 similar 但 D2 要求懒加载 | 详情主路径不阻塞 similar；独立 `/similar` 端点 |
+| TicketAggregate.similar 字段 | 已由梁栋 D-2 裁决闭环：`gateway.yaml` 不再内联 `similar`，相似推荐只走 `/tickets/{id}/similar` 懒加载 | 已按契约修订闭环；后续实现不得在详情主路径同步聚合 similar |
 
 ---
 

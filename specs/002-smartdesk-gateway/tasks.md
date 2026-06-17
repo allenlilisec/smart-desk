@@ -14,7 +14,7 @@
 
 ## 0. 与 main 现有 `src/smartdesk-gateway` 的 done / gap / drift 初判（P4 输入）
 
-> P4 刷新（2026-06-17）：当前检视基线为 submodule@`ac507b3`。结论：**GW-1/GW-2 MVP 已落地，OQ-W2 HttpOnly refresh cookie 已落地，D4 `Me.org_id` 漂移已闭环**；GW-3~5、`/readyz` 真探活、Redis 滑窗限流、契约全覆盖仍为 gap。
+> P4 刷新（2026-06-17）：当前检视基线为 submodule@`ac507b3`。结论：**GW-1/GW-2 MVP 已落地，OQ-W2 HttpOnly refresh cookie 已落地，D4 对外 `org_id` 漂移已闭环，D2 契约描述漂移已由梁栋裁决并按 `gateway.yaml` 修订闭环**；GW-3~5、`/readyz` 真探活、Redis 滑窗限流、契约全覆盖仍为 gap。
 
 ### 0.1 done（12 项，可直接消费）
 
@@ -25,6 +25,7 @@
 | GW-1 登录 | `AuthController` POST `/auth/login` | ✅ LocalProvider + JWT |
 | GW-1 刷新/登出 | POST `/auth/refresh`, `/auth/logout` | ✅ Redis 会话 + `sd_rt` HttpOnly Cookie |
 | GW-1 当前用户 | GET `/auth/me` | ✅ JWT claims；对外不暴露 `org_id` |
+| GW-2 工单 stub 响应 | GET/PATCH `/tickets/{id}` | ✅ 内部保留 `org_id` 授权，对外响应剥离 `org_id` |
 | GW-1 JWT/Redis | `JwtStrategy`, `RedisModule` | ✅ MVP |
 | GW-1 e2e | `test/app.e2e-spec.ts` | ✅ 认证链路 + refresh cookie + D4 回归 |
 | GW-2 角色矩阵 | `rbac/roles.ts` | ✅ Action 枚举 |
@@ -48,7 +49,8 @@
 | # | 漂移 | 影响 | 处置 |
 |---|---|---|---|
 | D-1 | `GET /auth/me` 响应曾含 `org_id`，gateway.yaml `Me` schema 已按 **D4 裁决删除 org_id** | 契约漂移，web 可能误消费 | **已闭环**：`AuthService.toMe()` 移除字段，单测 + e2e 增加不暴露断言 |
-| D-2 | `gateway.yaml` 当前 `/tickets/{id}` summary 仍写“聚合 core 详情 + insight 相似/建议”，但系统详设 D2 与 gateway 详设 §4.3 要求相似/建议独立懒加载，不阻塞详情主路径 | 文档/契约描述层漂移，可能误导实现为同步聚合 insight | drift，建议架构团队裁决后修订 `gateway.yaml` summary/schema 描述；模块侧不自行改契约 |
+| D-1b | `GET /tickets/{id}` stub 响应曾含内部 `org_id`，gateway.yaml `Ticket` / `TicketAggregate` schema 无该字段 | 契约漂移，浏览器侧可见内部租户字段 | **已闭环**：内部授权继续使用 `org_id`，对外 `PublicTicket` 响应剥离字段，单测 + e2e 增加不暴露断言 |
+| D-2 | `gateway.yaml` `/tickets/{id}` 详情描述与 `TicketAggregate.similar` 曾暗示相似推荐内联聚合；系统详设 D2 要求相似推荐独立懒加载 | 文档/契约描述层漂移，可能误导实现为同步聚合 insight | **已裁决并闭环**：梁栋裁定修订契约；`gateway.yaml` summary 已改为 core 主体 + `Ticket.suggestion`，并已移除 `TicketAggregate.similar`，相似推荐走 `/tickets/{id}/similar` |
 
 ---
 
@@ -176,7 +178,7 @@
 - [ ] T055 [P] [GW-3c] [US3] `GET /tickets/{id}/similar` → insight `POST /similarity/search`（D2，失败降级空列表）
 - [ ] T056 [GW-3c] [US3] `GET /tickets/{id}/suggestion` 读 core `Ticket.suggestion`（D1，不另调 insight）
 - [ ] T057 [GW-3c] [US3] `POST /tickets/{id}/suggestion` 采纳/纠偏 → core 应用 + insight `/feedback/classification`
-- [ ] T058 [P] [GW-3c] [US3] 详情 `TicketAggregate` 组装（core 详情 + 可选 similar 懒加载，不阻塞主路径）
+- [ ] T058 [P] [GW-3c] [US3] 详情 `TicketAggregate` 组装（core 工单主体 + `Ticket.suggestion`；similar 不内联，走 `/tickets/{id}/similar` 懒加载）
 - [ ] T059 [GW-3c] [US3] e2e：insight 不可用 similar 返回 200 空列表（US-3.3 AC3 降级）
 
 **Checkpoint**：D1/D2 聚合路径闭合，M3 智能增强可演示。
