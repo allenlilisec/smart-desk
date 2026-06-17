@@ -266,11 +266,18 @@ paths:
       tags: [config]
       summary: 修改分类节点（admin：改名/启停/排序/移动父节点）
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CategoryUpdate' } } } }
-      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Category' } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Category' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
     delete:
       tags: [config]
       summary: 删除/停用分类节点（admin）
-      responses: { '204': { description: OK }, '409': { description: 仍被引用, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } } }
+      responses:
+        '204': { description: OK }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: 仍被引用, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
 
   /config/sla-policies:
     get:
