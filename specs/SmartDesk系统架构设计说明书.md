@@ -318,7 +318,7 @@ core/insight ──(3)──▶ 只信任来自 gateway 的服务令牌；校验
 - **日志**：结构化 JSON，统一 `trace_id/request_id/org_id/actor_id`，分级；审计日志独立、不可篡改。
 - **指标**：各服务暴露 `/metrics`(Prometheus)；关键指标 SLA 计时准确性、接口 P95/P99、事件消费滞后(lag)、分类采纳率。
 - **链路追踪**：OpenTelemetry，gateway→core/insight→事件消费全链路 trace 透传。
-- **健康检查**：各服务 `/healthz`(liveness)、`/readyz`(readiness，含 DB/总线依赖)。
+- **健康检查**：各服务 `/healthz`(liveness)、`/readyz`(readiness；gateway/insight 含 DB/总线依赖，core 不强制探测 DB/NATS)。
 
 ---
 

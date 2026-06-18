@@ -42,7 +42,7 @@
 | D-1 | `src/openapi/core.yaml` 已是 `1.1.0`，并明确身份从 service-jwt claims 读取，拒绝旧 `X-User-* / X-Org-Id` 明文头。 | `tasks.md` 仍写 `core.yaml v1.0.1`，详设 §2/§4/§5/§8 多处仍写 `X-User-*` 透传或 `1.0.0` 冻结。 | 改设计文档到 1.1.0 + service-jwt claims 口径；不建议回退代码。 |
 | D-2 | 当前实现是轻量 MVP：`internal/httpapi` + `internal/domain` + `internal/store`，内存/Postgres 双 store；没有 `ticket/transition/assignment/sla` 等详设包，也没有 sqlc/oapi-codegen。 | 详设 §6 和 tasks.md 要求六边形分包、sqlc、oapi-codegen、outbox relay/NATS。 | 已裁决：MVP 为新事实源；原六边形/sqlc/oapi-codegen 已归档为长期技术债（[SUP-298](mention://issue/c7b6eec2-990f-4491-ad9b-33cb47ac8151)）。按 MVP 刷新文档。 |
 | D-3 | 事件发布为 in-memory best-effort publisher；Postgres schema 有 `processed_events`，但没有 `outbox_events`、relay 或 NATS JetStream。 | 详设要求事务性 outbox、至少一次投递、NATS relay。 | 已裁决：MVP 接受 in-memory best-effort，生产前必须升级为事务性 outbox + NATS relay（[SUP-296](mention://issue/c8498d4e-a331-4a39-8e43-f9944149b12c)）。 |
-| D-4 | `readyz` 返回 200 并报告 bus 健康；不会因总线不可用失败。 | 详设曾写 `/readyz` 探测 DB+NATS。 | 已裁决：`/readyz` 不强制探测 DB/NATS，保证主写路径不受总线影响（[SUP-297](mention://issue/d2a2e719-53ad-432e-b0bf-a51cdb0cf37d)）。 |
+| D-4 | `readyz` 返回 200 并报告 bus 健康；不会因总线不可用失败。 | 详设曾写 `/readyz` 探测 DB+NATS。 | 已裁决：`/readyz` 不强制探测 DB/NATS，保证主写路径不受总线影响；文档已刷新（[SUP-297](mention://issue/d2a2e719-53ad-432e-b0bf-a51cdb0cf37d)）。 |
 | D-5 | Postgres migration 是压缩后的 `0001_init.sql` + `0002_ticket_counter.sql` + `0003_attachments.sql`，表结构与详设拆分迁移不完全一致：无 `roles/user_roles/sla_policy_targets/outbox_events/ticket_status_history/watchers/csat_ratings` 等独立表。 | 详设 §3.2/tasks T005-T008/T016 要求拆分迁移与完整数据模型。 | 已裁决：`0001_init.sql` 为 MVP 基线，后续新表走独立 migration（[SUP-256](mention://issue/6dc94180-4236-4a26-83f3-aa8770cb73ed)）。 |
 
 ## 本次未直接补实现的原因

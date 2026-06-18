@@ -438,7 +438,7 @@
 
 #### IT-20-A001 · P0 · `/healthz` 与 `/readyz`
 - **步骤**：分别调用 G/C/I `/healthz`、`/readyz`。
-- **预期**：`/healthz` 200；依赖正常时 `/readyz` 200；停掉 DB/NATS 后 `/readyz` 503。
+- **预期**：`/healthz` 200；依赖正常时 `/readyz` 200；gateway/insight 在停掉 DB/NATS 后 `/readyz` 503，core `/readyz` 仍返回 200（不强制探测 DB/NATS）。
 - **依赖**：SUP-111 T009、SUP-112 T008、SUP-113 T040。
 
 ### S-21 admin 配置生效

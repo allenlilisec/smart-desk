@@ -73,7 +73,7 @@
 | **S-17** | 限流 | W→G 滑窗超阈值 | 超阈值 429；计数存 Redis（US-1.3 AC2） | M2 |
 | **S-18** | 服务间信任边界 | 绕过 G 直连 C/I | 无 service-jwt / aud 不符 → 拒绝；后端不二次鉴权但按 `X-User-*` 领域过滤（§7/§8） | M2 |
 | **S-19** | 事件可靠性（至少一次+幂等+顺序） | C 发事件→N→I/C 消费 | 重复投递按 `event_id` 去重；单工单 `occurred_at` 有序；消费 lag 可观测（D3/§6.3） | M2(基础)/M3(全量) |
-| **S-20** | 健康检查与就绪依赖 | G/C/I `/healthz`、`/readyz` | liveness 200；readiness 含 DB/总线/读模型依赖，依赖缺失 503 | M2 |
+| **S-20** | 健康检查与就绪依赖 | G/C/I `/healthz`、`/readyz` | liveness 200；gateway/insight readiness 含 DB/总线/读模型依赖、缺失 503；core readiness 不强制探测 DB/NATS | M2 |
 | **S-21** | admin 配置生效（分类树/SLA/用户角色/通知策略） | G `/admin/*`→C `/config/*` & I `/notifications/policies` | 配置变更对建单/分派/SLA/通知即时生效；非 admin 403 | M2/M3 |
 
 ---
@@ -107,7 +107,7 @@
 | `/assignments` `/comments` `/attachments` `/links` `/sla` `/timeline` `/watchers` `/csat` | 各自落库 + 对应事件发布；内部备注可见性；附件元数据 ⟷ MinIO 对象一致 |
 | `/attachments/{attId}/download-url` | 授权签发下载 URL；越权拒绝 |
 | `/config/{categories,sla-policies,users,users/{id}/roles}` | 权威配置变更驱动建单/分派/SLA/RBAC；分类码被 insight 只读引用一致性 |
-| `/healthz` `/readyz` | liveness/readiness（含 DB/总线依赖 503） |
+| `/healthz` `/readyz` | `/healthz` liveness 200；`/readyz` 服务可接收流量，不强制探测 DB/NATS |
 | **事件发布** | `ticket.*` 信封 schema（`event_id/event_type/occurred_at/org_id/ticket_id/actor_id/version/payload`）；分区键 `ticket_id`；消费 `insight.classification_suggested` 幂等写回 `Ticket.suggestion` |
 
 ### 3.3 insight 内部（`/v1`）

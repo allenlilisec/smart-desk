@@ -337,7 +337,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
 
   /healthz: { get: { tags: [config], summary: liveness, security: [], responses: { '200': { description: OK } } } }
-  /readyz:  { get: { tags: [config], summary: readiness（含 DB/总线依赖）, security: [], responses: { '200': { description: OK }, '503': { description: 未就绪 } } } }
+  /readyz:  { get: { tags: [config], summary: readiness（服务本身可接收流量，不强制探测 DB/NATS）, security: [], responses: { '200': { description: OK } } } }
 
 components:
   securitySchemes:
