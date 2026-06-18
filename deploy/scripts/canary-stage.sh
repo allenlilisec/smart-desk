@@ -46,6 +46,13 @@ export CORE_STABLE_REPLICAS CORE_CANARY_REPLICAS
 export INSIGHT_STABLE_REPLICAS INSIGHT_CANARY_REPLICAS
 
 # Apply replica counts via compose file envsubst (deploy.replicas).
+# First scale backend services to apply replica changes, then recreate ingress.
+docker compose -f "$COMPOSE_FILE" up -d \
+  gateway-stable gateway-canary \
+  web-stable web-canary \
+  core-stable core-canary \
+  insight-stable insight-canary
+
 # --force-recreate ingress rebuilds nginx upstream server list.
 docker compose -f "$COMPOSE_FILE" up -d --force-recreate ingress
 
