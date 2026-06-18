@@ -14,6 +14,19 @@ x-service-common: &service-common
   restart: unless-stopped
   networks: [smartdesk]
 
+x-core-build: &core-build
+  context: ../src/smartdesk-core
+  dockerfile: ../../deploy/core/Dockerfile
+
+x-core-env: &core-env
+  CORE_HTTP_ADDR: "0.0.0.0:8080"
+  CORE_DATABASE_URL: "${CORE_DATABASE_URL:-postgres://smartdesk:smartdesk@postgres:5432/smartdesk?sslmode=disable}"
+  CORE_ORG_ID: "${CORE_ORG_ID:-default}"
+  CORE_SERVICE_JWT_PUBLIC_KEY: "${CORE_SERVICE_JWT_PUBLIC_KEY:-}"
+  CORE_SERVICE_JWT_PUBLIC_KEY_FILE: "${CORE_SERVICE_JWT_PUBLIC_KEY_FILE:-}"
+  CORE_SERVICE_JWT_AUDIENCE: "${CORE_SERVICE_JWT_AUDIENCE:-core}"
+  CORE_SERVICE_JWT_ISSUER: "${CORE_SERVICE_JWT_ISSUER:-smartdesk-gateway}"
+
 services:
   # ── 共享依赖 ──────────────────────────────────────────────
   postgres:
@@ -59,31 +72,45 @@ services:
   # ── core 双轨 ─────────────────────────────────────────────
   core-stable:
     <<: *service-common
-    build:
-      context: ./healthz-stub
+    build: *core-build
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
+      <<: *core-env
       SERVICE: core
       VERSION: stable
-      PORT: "8080"
     labels:
       - "version=stable"
       - "service=core"
       - "prometheus.scrape=true"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/readyz >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     deploy:
       replicas: ${CORE_STABLE_REPLICAS:-19}
 
   core-canary:
     <<: *service-common
-    build:
-      context: ./healthz-stub
+    build: *core-build
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
+      <<: *core-env
       SERVICE: core
       VERSION: canary
-      PORT: "8080"
     labels:
       - "version=canary"
       - "service=core"
       - "prometheus.scrape=true"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/readyz >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     deploy:
       replicas: ${CORE_CANARY_REPLICAS:-1}
 
