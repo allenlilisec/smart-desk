@@ -42,6 +42,7 @@
   - 2026-06-18 06:06：苏睿在 smartdesk-insight `927438a` 提交修正路径为 `/internal/users/{userId}`。
   - 2026-06-18 06:10：韩衡确认修正提交存在，但 smart-desk 主仓 submodule 指针仍指向旧 commit `8ece078`，且 core 实现 commit `62938b55` 在本地/远程均不可达，需继续跟踪闭环。
   - 2026-06-18 06:20：CTO 裁定将"跨服务调用路径与 OpenAPI 契约一致"纳入集体检视门禁必检项（G-X），即日生效。
+  - 2026-06-18 06:24：秦诺完成 [SUP-314](mention://issue/b342af6b-e465-49a5-bc19-97448b3f78a0) 工程化改进，api-contract-check 自动断言调用方端点路径并接入 CI，可从源头拦截同类漂移。
 
 ---
 
@@ -55,7 +56,8 @@
 - **改进项**：
   - 已创建 `quality/review-checklist.md` 主文档，定义必检项 G-X；
   - 已在 `AGENTS.md` §9 索引并关联主文档；
-  - 工程化改进（api-contract-check 扩展/consumer-contract 测试）按独立子任务跟踪。
-- **状态**：已生效
+  - 工程化改进 [SUP-314](mention://issue/b342af6b-e465-49a5-bc19-97448b3f78a0) 已落地：`.github/workflows/api-contract-check.yml` + `scripts/api_contract_check.py` 自动断言调用方端点路径，CI 自动拦截路径漂移。
+- **状态**：已闭环
 - **记录人**：韩衡
 - **生效日期**：2026-06-18
+- **闭环日期**：2026-06-18
