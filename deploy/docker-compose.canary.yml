@@ -118,11 +118,32 @@ services:
   insight-stable:
     <<: *service-common
     build:
-      context: ./healthz-stub
+      context: ../src/smartdesk-insight
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
     environment:
+      ENV: staging
       SERVICE: insight
       VERSION: stable
-      PORT: "8080"
+      PORT: "8000"
+      DATABASE_URL: "postgresql+asyncpg://smartdesk:smartdesk@postgres:5432/smartdesk"
+      NATS_URL: "nats://nats:4222"
+      CORE_SERVICE_URL: "${CORE_SERVICE_URL:-http://core-canary:8081}"
+      CORE_SERVICE_TOKEN: "${CORE_SERVICE_TOKEN:-}"
+      CORE_SERVICE_TIMEOUT_SECONDS: "${CORE_SERVICE_TIMEOUT_SECONDS:-5.0}"
+      SERVICE_JWT_ALGORITHM: "${SERVICE_JWT_ALGORITHM:-RS256}"
+      SERVICE_JWT_PUBLIC_KEY: "${SERVICE_JWT_PUBLIC_KEY:-}"
+      SERVICE_JWT_SECRET_KEY: "${SERVICE_JWT_SECRET_KEY:-}"
+      SERVICE_JWT_AUDIENCE: "${SERVICE_JWT_AUDIENCE:-insight}"
+      SERVICE_JWT_ISSUER: "${SERVICE_JWT_ISSUER:-smartdesk-gateway}"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2).read()\""]
+      interval: 10s
+      timeout: 3s
+      retries: 10
     labels:
       - "version=stable"
       - "service=insight"
@@ -133,11 +154,32 @@ services:
   insight-canary:
     <<: *service-common
     build:
-      context: ./healthz-stub
+      context: ../src/smartdesk-insight
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
     environment:
+      ENV: staging
       SERVICE: insight
       VERSION: canary
-      PORT: "8080"
+      PORT: "8000"
+      DATABASE_URL: "postgresql+asyncpg://smartdesk:smartdesk@postgres:5432/smartdesk"
+      NATS_URL: "nats://nats:4222"
+      CORE_SERVICE_URL: "${CORE_SERVICE_URL:-http://core-canary:8081}"
+      CORE_SERVICE_TOKEN: "${CORE_SERVICE_TOKEN:-}"
+      CORE_SERVICE_TIMEOUT_SECONDS: "${CORE_SERVICE_TIMEOUT_SECONDS:-5.0}"
+      SERVICE_JWT_ALGORITHM: "${SERVICE_JWT_ALGORITHM:-RS256}"
+      SERVICE_JWT_PUBLIC_KEY: "${SERVICE_JWT_PUBLIC_KEY:-}"
+      SERVICE_JWT_SECRET_KEY: "${SERVICE_JWT_SECRET_KEY:-}"
+      SERVICE_JWT_AUDIENCE: "${SERVICE_JWT_AUDIENCE:-insight}"
+      SERVICE_JWT_ISSUER: "${SERVICE_JWT_ISSUER:-smartdesk-gateway}"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2).read()\""]
+      interval: 10s
+      timeout: 3s
+      retries: 10
     labels:
       - "version=canary"
       - "service=insight"
