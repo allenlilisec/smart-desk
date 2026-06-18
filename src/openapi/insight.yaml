@@ -257,6 +257,10 @@ components:
 
     NotificationSend:
       type: object
+      description: >
+        发送通知请求体。`user_id` 为目标用户；insight 须调用 core `GET /internal/users/{userId}`
+        解析其 `org_id`，并与当前请求上下文 service-jwt claim 中的 `org_id` 做跨租户校验；
+        不一致时拒绝（403），禁止调用方透传 `x-target-user-org-id` 等目标租户头。
       required: [user_id, type, channel, title]
       properties:
         user_id: { type: string, format: uuid }

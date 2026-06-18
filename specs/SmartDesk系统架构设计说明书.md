@@ -58,7 +58,7 @@
               │  • 路由聚合（为前端拼装 core+insight 视图）、限流、审计埋点  │
               │  • 身份提供方可插拔（一期自建账号；预留 OIDC 适配器）        │
               └───────┬───────────────────────────────────┬────────────┘
-            内部调用 (mTLS + 服务令牌 + 透传用户身份)        │
+            内部调用 (mTLS + service-jwt 服务令牌携带身份/租户 claims)        │
                       ▼                                     ▼
         ┌───────────────────────────┐       ┌──────────────────────────────┐
         │ smartdesk-core (Go)        │       │ smartdesk-insight (Py/FastAPI) │
@@ -197,7 +197,7 @@
 - 分页：`?page=&page_size=`（或 `cursor`），响应 `{items, page, page_size, total}`；列表过滤字段在各 path 显式声明。
 - 幂等：写操作支持 `Idempotency-Key` 头（状态流转/通知/分派幂等，US-2.2 AC4 / US-4.1 AC3）。
 - 时间：RFC3339 UTC；金额/时长用整数（分钟/秒）避免浮点。
-- 安全方案：gateway 对外 `bearerAuth`(JWT)；内部服务 `serviceAuth`(服务令牌) + 透传用户身份头（见 §6）。
+- 安全方案：gateway 对外 `bearerAuth`(JWT)；内部服务 `serviceAuth`(服务令牌) + service-jwt claims 承载身份/租户（见 §6）。
 
 > **裁决权**：契约变更（新增/修改/删除字段或路径）须经梁栋批准；秦诺以 `api-contract-check` 校验实现与契约一致、把守跨服务共享 schema（Error/分页/事件）与版本管理。
 
@@ -258,13 +258,14 @@
 浏览器 ──JWT(Bearer)──▶ gateway ──(1)校验JWT+RBAC──▶ 通过
 gateway ──(2)内部调用 core/insight──▶  mTLS 通道
         头：Authorization: Bearer <service-jwt>     // 服务身份，短时、gateway 私钥签
-            X-User-Id / X-User-Roles / X-Org-Id / X-Request-Id  // 透传最终用户身份上下文
+            service-jwt claims: sub / roles / org_id  // 承载最终用户身份/租户
+            X-Request-Id                               // 链路追踪，透传
 core/insight ──(3)──▶ 只信任来自 gateway 的服务令牌；校验 service-jwt 签名+aud；
-                       用 X-User-* 做领域级数据可见性（如内部备注过滤、本组工单范围）
+                       用已验签 claims（sub/roles/org_id）做领域级数据可见性（如内部备注过滤、本组工单范围）
 ```
 
 - **后端不直接面向浏览器**：core/insight 仅监听内网，外部不可达；未经 gateway 的直达请求在网络层被拒（NFR/US-1.3 AC1）。
-- **服务令牌**：gateway 用私钥签发短时 `service-jwt`（`iss=gateway, aud=core|insight, sub=svc`），core/insight 校验签名与受众；**用户身份不再二次鉴权**（鉴权已在 gateway 收口），但用 `X-User-*` 做**领域级数据过滤**（最小权限的纵深防御）。
+- **服务令牌**：gateway 用私钥签发短时 `service-jwt`（`iss=gateway, aud=core|insight, sub=svc`），并在 claims 中携带 `sub/roles/org_id`；core/insight 校验签名与受众；**用户身份不再二次鉴权**（鉴权已在 gateway 收口），但用 service-jwt 已验签 claims（`sub/roles/org_id`）做**领域级数据过滤**（最小权限的纵深防御）。
 - **mTLS**：服务间 TLS 双向证书，杜绝内网仿冒；证书由部署期签发（发布运维）。
 - `X-Request-Id`/`trace_id` 全链路透传，落日志与时间线，支撑审计与链路追踪。
 
@@ -350,7 +351,7 @@ core/insight ──(3)──▶ 只信任来自 gateway 的服务令牌；校验
 - GW-2 RBAC 模块：角色×动作矩阵、403、审计埋点
 - GW-3 聚合 BFF：为前端拼装工单详情（core+insight 相似/建议）、列表、看板
 - GW-4 限流与防护：滑窗限流 429、基础防护
-- GW-5 服务令牌签发 + mTLS 客户端 + 透传头
+- GW-5 服务令牌签发 + mTLS 客户端 + service-jwt claims 承载身份/租户
 
 **core（后端团队·石磊搭骨架/集成；陈川=模块A，连城=模块B）**
 - CORE-0 骨架：服务脚手架、DB schema/迁移、事件发布客户端、配置、健康检查/指标（石磊）
