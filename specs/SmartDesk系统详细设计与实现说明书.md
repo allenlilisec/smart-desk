@@ -294,7 +294,7 @@ core/insight ──▶ 只信任 gateway 的 service-jwt（校验签名+aud/clai
 | 可靠性：幂等/至少一次/可审计 | 写操作 Idempotency-Key；事件至少一次+消费幂等；时间线仅追加审计 |
 | 合规预留（OQ-10） | 软删除 + 审计不可篡改 + admin 导出/删除接口预留；留存期/法务判定 M4 GA 前由人类/法务确认（不阻塞 M1/M2） |
 
-**可观测性三支柱**：结构化 JSON 日志（统一 `trace_id/request_id/org_id/actor_id`，审计独立不可篡改）；`/metrics`(Prometheus，关键指标 SLA 计时准确性、P95/P99、事件消费 lag、分类采纳率)；OpenTelemetry 全链路 trace；`/healthz`(liveness) + `/readyz`(readiness，含 DB/总线依赖)。
+**可观测性三支柱**：结构化 JSON 日志（统一 `trace_id/request_id/org_id/actor_id`，审计独立不可篡改）；`/metrics`(Prometheus，关键指标 SLA 计时准确性、P95/P99、事件消费 lag、分类采纳率)；OpenTelemetry 全链路 trace；`/healthz`(liveness) + `/readyz`(readiness；gateway/insight 含 DB/总线依赖，core 不强制探测 DB/NATS)。
 
 ---
 

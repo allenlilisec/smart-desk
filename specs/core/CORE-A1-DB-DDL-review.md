@@ -4,7 +4,7 @@
 > 检视范围：详设 §3.2 中 `0002_tickets`（tickets / ticket_status_history / ticket_timeline）与 `0003_workflow`（assignments / comments / attachments / ticket_links / sla_timers / watchers / csat_ratings）。
 > 事实源：
 > - `specs/core子系统详细设计与实现说明书.md` v2.0 §3.2
-> - `src/openapi/core.yaml` v1.0.1
+> - `src/openapi/core.yaml` v1.1.0
 > - `specs/SmartDesk系统详细设计与实现说明书.md` §4.2 / §4.3
 >
 > 说明：石磊正在落 `0002_tickets` / `0003_workflow` 迁移，本意见作为集体检视输入，供后续评审会议逐项确认。

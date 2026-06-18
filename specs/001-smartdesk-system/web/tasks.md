@@ -7,19 +7,78 @@
 
 ---
 
-## 一、done/gap/drift 初判（供 P4 输入）
+## 一、done/gap/drift 清单（P4 同步，2026-06-17）
 
-> **结论：全量 gap。**`src/smartdesk-web/` 当前为空目录，无任何已实现文件。
+> 口径：本轮已初始化 `src/smartdesk-web` submodule，实际代码从 `smartdesk-web@3748df5` 评估并推进到 `smartdesk-web@9ed0d0b`（补 `/healthz` 与 OQ-W2 会话快照修复）。旧版“空目录/全量 gap”结论已失效。
+>
+> 状态含义：`done`=当前代码满足该任务核心验收；`gap`=未实现或仅 MVP 子集；`drift`=已有实现与冻结详设/路由/契约形态不一致，需改代码或提架构裁决。
 
-| 模块 | 详设预期 | 实现现状 | 初判 |
+### 1.1 模块汇总
+
+| 模块 | 详设预期 | 当前实现 | 初判 | 处置 |
+|---|---|---|---|---|
+| WEB-0 脚手架 | Next.js 工程、Auth、apiClient、布局壳、CI、`/healthz` | Next.js 工程、Tailwind、AuthProvider、apiClient、mock、单测已存在；本轮补 `app/api/healthz/route.ts` | ⚠️ gap | 保留工程；补 CI、OpenAPI 类型生成、middleware/RBAC/QueryProvider |
+| WEB-1 报单门户 | 登录、提单、我的工单、详情、关闭/重开、CSAT、通知、附件 | `/login`、`/portal`、`/portal/new`、`/portal/[id]` 基础流已存在 | ⚠️ gap | MVP 可演示；CSAT/通知/附件/幂等与表单校验另列后续 |
+| WEB-2 坐席工作台 | `/desk` 队列+详情+流转+评论/内部备注+附件+分派+SLA/时间线+AI | `/agent` 队列、详情、状态按钮、评论/内部备注、时间线基础版 | ⚠️ drift | 路由与详设不一致；建议改代码到 `/desk`，并补 lead+/附件/SLA/AI |
+| WEB-3 管理后台 | 分类/SLA/用户/通知策略 CRUD | 未实现 `/admin/*` | ❌ gap | 依赖 gateway `/admin/*` 稳定后实现 |
+| WEB-4 看板报表 | `/dashboard` stats 图表、筛选、CSV | 未实现 | ❌ gap | 依赖 INS-5 stats 与 gateway `/stats` |
+| WEB-5 i18n 预留 | next-intl + zh-CN 文案外置 | 文案硬编码在 TSX/常量，未接 i18n | ❌ gap | M4 前补 next-intl 或同等框架 |
+| 测试与质量 | Vitest、Playwright、Lighthouse、audit、OpenAPI regen | Vitest 覆盖 auth/api；无 E2E/CI/Lighthouse | ⚠️ gap | 保留现有单测；补 E2E/CI/覆盖率门禁 |
+
+### 1.2 任务级追溯矩阵
+
+| 任务 ID | P4 状态 | 当前代码位置 | 差异/处置 |
 |---|---|---|---|
-| WEB-0 脚手架 | Next.js 工程 + CI 骨架 | src/smartdesk-web 为空 | ❌ gap |
-| WEB-1 报单门户 | 提单/我的工单/关闭/CSAT | 同上 | ❌ gap |
-| WEB-2 坐席工作台 | 队列+详情+流转+评论 | 同上 | ❌ gap |
-| WEB-3 管理后台 | 分类/SLA/用户/通知 | 同上 | ❌ gap |
-| WEB-4 看板报表 | Stats 图表+CSV 导出 | 同上 | ❌ gap |
-| WEB-5 i18n 预留 | next-intl + zh-CN | 同上 | ❌ gap |
-| 测试与质量 | 单测/E2E/Lighthouse | 同上 | ❌ gap |
+| T-00-1 | ✅ done | `src/smartdesk-web/package.json`, `tsconfig.json`, `next.config.mjs`, `src/app/layout.tsx` | Next.js 工程已存在。 |
+| T-00-2 | ⚠️ gap | `tailwind.config.ts`, `src/components/ui.tsx` | Tailwind 与基础 UI 有；未见 shadcn/Radix 依赖与生成目录。 |
+| T-00-3 | ❌ gap | `src/lib/api.ts`, `src/lib/types.ts` | apiClient 为手写类型；缺 `openapi-typescript` 生成、`types/gateway.d.ts` 与一致性脚本。 |
+| T-00-4 | ⚠️ gap | `src/components/AuthProvider.tsx`, `src/lib/auth.ts`, `src/lib/api.ts` | token/session 与 refresh 基础存在；缺 middleware 路由守卫与 refresh queue。本轮修复 `me` 不再写 `localStorage`。 |
+| T-00-5 | ❌ gap | 无 | 缺 `can()`、`usePermission`、`RoleGuard`；当前仅按页面模式隐藏部分 UI。 |
+| T-00-6 | ❌ gap | 无 | 未接 TanStack Query，页面直接 `useEffect` 调 api。 |
+| T-00-7 | ⚠️ drift | `src/app/login/page.tsx`, `src/app/portal/*`, `src/app/agent/page.tsx`, `src/lib/auth.ts` | 仅有 `/login`、`/portal`、`/agent`；详设要求 `/desk`、`/admin`、`/dashboard` 与多角色优先级。 |
+| T-00-8 | ❌ gap | 无 `.github/workflows` | 缺 CI、lint/typecheck/audit/openapi regen 门禁。 |
+| T-00-9 | ✅ done | `src/app/api/healthz/route.ts` | 本轮补静态 200 JSON 健康检查。 |
+| T-01-1 | ⚠️ gap | `src/app/login/page.tsx`, `src/components/AppShell.tsx`, `src/lib/api.ts` | 登录/登出基础存在；缺 403/429 统一 UX、限流冷却与 returnUrl。 |
+| T-01-2 | ⚠️ gap | `src/app/portal/new/page.tsx`, `src/lib/api.ts` | 基础提单存在；缺 Idempotency-Key、附件先上传、RHF/Zod 契约校验。 |
+| T-01-3 | ⚠️ gap | `src/app/portal/page.tsx`, `src/components/TicketList.tsx` | 我的工单与 status 筛选存在；缺分页、priority/q 筛选。 |
+| T-01-4 | ⚠️ gap | `src/app/portal/[id]/page.tsx`, `src/components/TicketDetailPanel.tsx` | 详情主体存在；未实现建议/相似懒加载降级、骨架屏与 portal 专属 Tab 约束。 |
+| T-01-5 | ⚠️ gap | `src/components/TicketDetailPanel.tsx`, `src/lib/types.ts` | requester close/reopen 有基础按钮；缺 XState 只读状态机、409 原因展示。 |
+| T-01-6 | ❌ gap | 无 | CSAT GET/POST 未实现。 |
+| T-01-7 | ❌ gap | 无 | NotificationBell/Drawer 未实现。 |
+| T-01-8 | ❌ gap | 无 | AttachmentList/下载与上传错误 UX 未实现。 |
+| T-02-1 | ⚠️ drift | `src/app/agent/page.tsx`, `src/components/TicketList.tsx` | 队列+左右分栏基础存在，但路由为 `/agent`，详设为 `/desk`；缺深链 `/desk/tickets/[id]`。 |
+| T-02-2 | ⚠️ gap | `src/components/TicketDetailPanel.tsx` | agent 状态按钮基础存在；缺 lead+ cancel、完整八态、XState、409 原因。 |
+| T-02-3 | ⚠️ gap | `src/components/TicketDetailPanel.tsx`, `src/lib/api.ts` | 评论/内部备注基础存在；缺 @mentions 与专用组件拆分。 |
+| T-02-4 | ❌ gap | 无 | 附件上传/管理未实现。 |
+| T-02-5 | ❌ gap | 无 | 分派/改派/升级对话框未实现。 |
+| T-02-6 | ❌ gap | `src/lib/types.ts` 仅有 `SlaView` 类型 | 缺 `SlaBadge` 与 SLA 展示。 |
+| T-02-7 | ⚠️ gap | `src/components/TicketDetailPanel.tsx`, `src/lib/api.ts` | 时间线基础展示存在；缺分页加载。 |
+| T-02-8 | ❌ gap | 无 | SimilarTickets 未实现。 |
+| T-02-9 | ❌ gap | 无 | SuggestionPanel 未实现。 |
+| T-03-1 | ❌ gap | 无 | 分类树 CRUD 未实现。 |
+| T-03-2 | ❌ gap | 无 | SLA 策略页未实现。 |
+| T-03-3 | ❌ gap | 无 | 用户/角色管理未实现。 |
+| T-03-4 | ❌ gap | 无 | 通知策略页未实现。 |
+| T-04-1 | ❌ gap | 无 | Stats 图表未实现。 |
+| T-04-2 | ❌ gap | 无 | Stats 筛选未实现。 |
+| T-04-3 | ❌ gap | 无 | CSV 导出未实现。 |
+| T-05-1 | ❌ gap | 无 | next-intl/i18n 架构未实现。 |
+| T-05-2 | ❌ gap | `src/lib/types.ts`, TSX 页面文案 | zh-CN 文案仍硬编码，未外置 JSON。 |
+| T-QA-1 | ⚠️ gap | `src/lib/__tests__/auth.test.ts`, `src/lib/__tests__/api.test.ts` | auth/api 单测存在；缺 rbac、状态机、组件覆盖与覆盖率门禁。 |
+| T-QA-2 | ❌ gap | 无 | Playwright 越权红线未实现。 |
+| T-QA-3 | ❌ gap | 无 | 提单→关闭 E2E 未实现。 |
+| T-QA-4 | ❌ gap | 无 | 降级场景 E2E 未实现。 |
+| T-QA-5 | ❌ gap | 无 | Lighthouse CI 与 audit 门禁未实现。 |
+
+### 1.3 drift 与裁决建议
+
+| drift | 当前差异 | 建议 |
+|---|---|---|
+| 路由命名 | 实现为 `/agent`，详设和系统详设为 `/desk`；`homePathForRoles()` 也将 admin/manager 导向 `/agent` | **改代码**：保留兼容重定向可选，主入口迁移到 `/desk`；同时补 `/admin`、`/dashboard`。无需架构裁决。 |
+| 契约消费 | 实现用手写 `src/lib/types.ts` + `fetch`，未由 `gateway.yaml` 生成类型 | **改代码**：补 openapi-typescript 生成与 CI 检查；不修改 OpenAPI。 |
+| 目录结构 | 实现扁平 `components/` + app 页面，详设要求 `features/*`、`lib/api/client.ts`、`lib/rbac/*` | **改代码**：随 WEB-1/2 后续补功能时渐进迁移，不单独大重构。 |
+| i18n | 详设要求文案外置；实现硬编码中文 | **改代码**：WEB-5 接 next-intl 或同等方案。 |
+| UI/数据请求技术栈 | 详设为 shadcn/Radix、TanStack Query、RHF/Zod、XState；当前均未接入 | **改代码**：属于 P4/P5 后续实现缺口，不需架构裁决。 |
 
 ---
 

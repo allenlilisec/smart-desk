@@ -311,11 +311,11 @@ paths:
     parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid } }]
     get:
       tags: [config]
-      summary: 内部用户租户解析（按 userId 获取 UserTenantProfile）
+      summary: 用户租户解析（服务间内部端点，供 insight 跨租户通知校验）
       description: >
-        服务间端点，供 insight 等内部服务解析 `user_id → org_id`，用于跨租户通知校验。
-        调用方须持有有效 service-jwt；core 按调用方 `org_id` claim 过滤，仅返回同租户用户
-        （越权 403）。gateway BFF 不应向外部暴露此端点。
+        返回用户基本信息及所属租户 org_id。insight 发送通知前调用此端点解析 `user_id → org_id`，
+        并与调用方 service-jwt claim 中的 org_id 比对；不一致或用户不存在时 fail-closed 拒绝发送。
+        该端点仅用于服务间调用，不进入 gateway 对外契约。
       responses:
         '200':
           description: OK
@@ -337,7 +337,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
 
   /healthz: { get: { tags: [config], summary: liveness, security: [], responses: { '200': { description: OK } } } }
-  /readyz:  { get: { tags: [config], summary: readiness（含 DB/总线依赖）, security: [], responses: { '200': { description: OK }, '503': { description: 未就绪 } } } }
+  /readyz:  { get: { tags: [config], summary: readiness（服务本身可接收流量，不强制探测 DB/NATS）, security: [], responses: { '200': { description: OK } } } }
 
 components:
   securitySchemes:
@@ -624,6 +624,7 @@ components:
       type: object
       properties:
         id: { type: string, format: uuid }
+        org_id: { type: string, description: 租户ID（多租户预留，OQ-7） }
         username: { type: string }
         email: { type: string, format: email }
         display_name: { type: string }
@@ -631,11 +632,10 @@ components:
         roles: { type: array, items: { $ref: '#/components/schemas/RoleCode' } }
     UserTenantProfile:
       type: object
-      description: 服务间用户租户解析视图（内部端点 `/internal/users/{userId}`）。
-      required: [id, org_id, email, roles, status]
+      description: 服务间用户租户解析视图，仅用于 /internal/users/{userId}
       properties:
         id: { type: string, format: uuid }
-        org_id: { type: string, default: default, description: 用户归属租户 }
+        org_id: { type: string, description: 租户ID }
         email: { type: string, format: email }
         roles: { type: array, items: { $ref: '#/components/schemas/RoleCode' } }
         status: { type: string, enum: [active, disabled] }
