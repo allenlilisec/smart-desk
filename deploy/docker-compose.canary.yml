@@ -26,6 +26,13 @@ x-core-env: &core-env
   CORE_SERVICE_JWT_PUBLIC_KEY_FILE: "${CORE_SERVICE_JWT_PUBLIC_KEY_FILE:-}"
   CORE_SERVICE_JWT_AUDIENCE: "${CORE_SERVICE_JWT_AUDIENCE:-core}"
   CORE_SERVICE_JWT_ISSUER: "${CORE_SERVICE_JWT_ISSUER:-smartdesk-gateway}"
+  CORE_NATS_URL: "tls://core:${NATS_CORE_PASSWORD:-changeme-core}@nats:4222"
+  CORE_NATS_CA_FILE: "/etc/nats/certs/ca.crt"
+  CORE_NATS_STREAM: "SMARTDESK_EVENTS"
+
+x-nats-env: &nats-env
+  NATS_CORE_PASSWORD: "${NATS_CORE_PASSWORD:-changeme-core}"
+  NATS_INSIGHT_PASSWORD: "${NATS_INSIGHT_PASSWORD:-changeme-insight}"
 
 services:
   # ── 共享依赖 ──────────────────────────────────────────────
@@ -52,14 +59,38 @@ services:
     networks: [smartdesk]
 
   nats:
-    image: nats:2.10-alpine
-    command: ["-js", "-m", "8222"]
+    build:
+      context: ./nats
+    environment:
+      <<: *nats-env
+    volumes:
+      - nats-certs:/etc/nats/certs
+      - nats-data:/data
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8222/healthz"]
       interval: 5s
       timeout: 3s
       retries: 10
     networks: [smartdesk]
+
+  nats-init:
+    image: natsio/nats-box:0.14.3
+    depends_on:
+      nats:
+        condition: service_healthy
+    environment:
+      <<: *nats-env
+    volumes:
+      - nats-certs:/etc/nats/certs:ro
+    networks: [smartdesk]
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        nats --server "tls://core:$${NATS_CORE_PASSWORD}@nats:4222" --tlsca /etc/nats/certs/ca.crt \
+          stream add SMARTDESK_EVENTS --subjects 'smartdesk.>' --storage file --retention limits --defaults \
+          || nats --server "tls://core:$${NATS_CORE_PASSWORD}@nats:4222" --tlsca /etc/nats/certs/ca.crt stream info SMARTDESK_EVENTS
 
   minio:
     image: minio/minio:latest
@@ -76,10 +107,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      nats-init:
+        condition: service_completed_successfully
     environment:
       <<: *core-env
       SERVICE: core
       VERSION: stable
+    volumes:
+      - nats-certs:/etc/nats/certs:ro
     labels:
       - "version=stable"
       - "service=core"
@@ -98,10 +133,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      nats-init:
+        condition: service_completed_successfully
     environment:
       <<: *core-env
       SERVICE: core
       VERSION: canary
+    volumes:
+      - nats-certs:/etc/nats/certs:ro
     labels:
       - "version=canary"
       - "service=core"
@@ -124,13 +163,16 @@ services:
         condition: service_healthy
       nats:
         condition: service_healthy
+      nats-init:
+        condition: service_completed_successfully
     environment:
       ENV: staging
       SERVICE: insight
       VERSION: stable
       PORT: "8000"
       DATABASE_URL: "postgresql+asyncpg://smartdesk:smartdesk@postgres:5432/smartdesk"
-      NATS_URL: "nats://nats:4222"
+      NATS_URL: "tls://insight:${NATS_INSIGHT_PASSWORD:-changeme-insight}@nats:4222"
+      NATS_CA_FILE: "/etc/nats/certs/ca.crt"
       CORE_SERVICE_URL: "${CORE_SERVICE_URL:-http://core-canary:8081}"
       CORE_SERVICE_TOKEN: "${CORE_SERVICE_TOKEN:-}"
       CORE_SERVICE_TIMEOUT_SECONDS: "${CORE_SERVICE_TIMEOUT_SECONDS:-5.0}"
@@ -148,6 +190,8 @@ services:
       - "version=stable"
       - "service=insight"
       - "prometheus.scrape=true"
+    volumes:
+      - nats-certs:/etc/nats/certs:ro
     deploy:
       replicas: ${INSIGHT_STABLE_REPLICAS:-19}
 
@@ -160,13 +204,16 @@ services:
         condition: service_healthy
       nats:
         condition: service_healthy
+      nats-init:
+        condition: service_completed_successfully
     environment:
       ENV: staging
       SERVICE: insight
       VERSION: canary
       PORT: "8000"
       DATABASE_URL: "postgresql+asyncpg://smartdesk:smartdesk@postgres:5432/smartdesk"
-      NATS_URL: "nats://nats:4222"
+      NATS_URL: "tls://insight:${NATS_INSIGHT_PASSWORD:-changeme-insight}@nats:4222"
+      NATS_CA_FILE: "/etc/nats/certs/ca.crt"
       CORE_SERVICE_URL: "${CORE_SERVICE_URL:-http://core-canary:8081}"
       CORE_SERVICE_TOKEN: "${CORE_SERVICE_TOKEN:-}"
       CORE_SERVICE_TIMEOUT_SECONDS: "${CORE_SERVICE_TIMEOUT_SECONDS:-5.0}"
@@ -184,6 +231,8 @@ services:
       - "version=canary"
       - "service=insight"
       - "prometheus.scrape=true"
+    volumes:
+      - nats-certs:/etc/nats/certs:ro
     deploy:
       replicas: ${INSIGHT_CANARY_REPLICAS:-1}
 
@@ -264,6 +313,10 @@ services:
       WEB_STABLE_REPLICAS: "${WEB_STABLE_REPLICAS:-19}"
       WEB_CANARY_REPLICAS: "${WEB_CANARY_REPLICAS:-1}"
     networks: [smartdesk]
+
+volumes:
+  nats-certs:
+  nats-data:
 
 networks:
   smartdesk:

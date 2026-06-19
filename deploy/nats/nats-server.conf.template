@@ -1,0 +1,56 @@
+# SUP-249: NATS 信息泄露收口 — 鉴权 + 主题级 ACL + TLS + 监控口仅本机
+# 密码由 entrypoint 经 envsubst 注入；生产环境 MUST 覆盖默认密码。
+
+port: 4222
+host: 0.0.0.0
+
+http: 127.0.0.1:8222
+
+tls {
+  cert_file: "/etc/nats/certs/server.crt"
+  key_file: "/etc/nats/certs/server.key"
+  ca_file: "/etc/nats/certs/ca.crt"
+  verify: false
+  timeout: 2
+}
+
+jetstream {
+  store_dir: /data/jetstream
+  max_memory_store: 256MB
+  max_file_store: 2GB
+}
+
+authorization {
+  users = [
+    {
+      user: core
+      password: "${NATS_CORE_PASSWORD}"
+      permissions: {
+        publish: [
+          "smartdesk.>",
+          "$JS.API.>",
+          "_INBOX.>"
+        ]
+        subscribe: [
+          "_INBOX.>",
+          "$JS.ACK.>"
+        ]
+      }
+    },
+    {
+      user: insight
+      password: "${NATS_INSIGHT_PASSWORD}"
+      permissions: {
+        publish: [
+          "smartdesk.insight.>",
+          "$JS.API.>"
+        ]
+        subscribe: [
+          "smartdesk.>",
+          "_INBOX.>",
+          "$JS.ACK.>"
+        ]
+      }
+    }
+  ]
+}
