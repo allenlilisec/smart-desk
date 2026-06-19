@@ -168,6 +168,8 @@ paths:
       summary: 附件列表（元数据）
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Attachment' } } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
     post:
       tags: [attachments]
       summary: 申请上传（返回对象存储预签名 URL；约束 ≤20MB+类型白名单，OQ-9）
