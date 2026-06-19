@@ -279,7 +279,7 @@ paths:
         - { name: to, in: query, schema: { type: string, format: date-time } }
         - { name: category_id, in: query, schema: { type: string, format: uuid } }
         - { name: assignee_id, in: query, schema: { type: string, format: uuid } }
-        - { name: priority, in: query, schema: { $ref: '#/components/schemas/Priority' } }
+        - { name: priority, in: query, schema: { type: string, enum: [P1, P2, P3, P4] } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/StatsResult' } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
