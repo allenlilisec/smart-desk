@@ -22,6 +22,13 @@ x-core-env: &core-env
   CORE_SERVICE_JWT_PUBLIC_KEY_FILE: "${CORE_SERVICE_JWT_PUBLIC_KEY_FILE:-}"
   CORE_SERVICE_JWT_AUDIENCE: "${CORE_SERVICE_JWT_AUDIENCE:-core}"
   CORE_SERVICE_JWT_ISSUER: "${CORE_SERVICE_JWT_ISSUER:-smartdesk-gateway}"
+  CORE_NATS_URL: "tls://core:${NATS_CORE_PASSWORD:-changeme-core}@nats:4222"
+  CORE_NATS_CA_FILE: "/etc/nats/certs/ca.crt"
+  CORE_NATS_STREAM: "SMARTDESK_EVENTS"
+
+x-nats-env: &nats-env
+  NATS_CORE_PASSWORD: "${NATS_CORE_PASSWORD:-changeme-core}"
+  NATS_INSIGHT_PASSWORD: "${NATS_INSIGHT_PASSWORD:-changeme-insight}"
 
 services:
   # ── 共享依赖 ──────────────────────────────────────────────
@@ -54,16 +61,40 @@ services:
     networks: [smartdesk-alpha]
 
   nats:
-    image: nats:2.10-alpine
+    build:
+      context: ./nats
     container_name: alpha-nats
-    command: ["-js", "-m", "8222"]
+    environment:
+      <<: *nats-env
+    volumes:
+      - nats-certs:/etc/nats/certs
+      - nats-data:/data
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8222/healthz"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
     networks: [smartdesk-alpha]
+
+  nats-init:
+    image: natsio/nats-box:0.14.3
+    depends_on:
+      nats:
+        condition: service_healthy
+    environment:
+      <<: *nats-env
+    volumes:
+      - nats-certs:/etc/nats/certs:ro
+    networks: [smartdesk-alpha]
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        nats --server "tls://core:$${NATS_CORE_PASSWORD}@nats:4222" --tlsca /etc/nats/certs/ca.crt \
+          stream add SMARTDESK_EVENTS --subjects 'smartdesk.>' --storage file --retention limits --defaults \
+          || nats --server "tls://core:$${NATS_CORE_PASSWORD}@nats:4222" --tlsca /etc/nats/certs/ca.crt stream info SMARTDESK_EVENTS
 
   minio:
     image: minio/minio:latest
@@ -92,10 +123,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      nats-init:
+        condition: service_completed_successfully
     environment:
       <<: *core-env
       SERVICE: core
       VERSION: alpha
+    volumes:
+      - nats-certs:/etc/nats/certs:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/readyz >/dev/null"]
       interval: 10s
@@ -115,13 +150,16 @@ services:
         condition: service_healthy
       nats:
         condition: service_healthy
+      nats-init:
+        condition: service_completed_successfully
     environment:
       ENV: alpha
       SERVICE: insight
       VERSION: alpha
       PORT: "8000"
       DATABASE_URL: "postgresql+asyncpg://smartdesk:smartdesk@postgres:5432/smartdesk"
-      NATS_URL: "nats://nats:4222"
+      NATS_URL: "tls://insight:${NATS_INSIGHT_PASSWORD:-changeme-insight}@nats:4222"
+      NATS_CA_FILE: "/etc/nats/certs/ca.crt"
       CORE_SERVICE_URL: "${CORE_SERVICE_URL:-http://core:8080}"
       CORE_SERVICE_TOKEN: "${CORE_SERVICE_TOKEN:-}"
       CORE_SERVICE_TIMEOUT_SECONDS: "${CORE_SERVICE_TIMEOUT_SECONDS:-5.0}"
@@ -136,6 +174,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    volumes:
+      - nats-certs:/etc/nats/certs:ro
     networks: [smartdesk-alpha]
 
   # ── gateway 服务（BFF 聚合层）──────────────────────────────
@@ -219,6 +259,8 @@ services:
 volumes:
   postgres-data:
   minio-data:
+  nats-certs:
+  nats-data:
 
 networks:
   smartdesk-alpha:
