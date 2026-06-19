@@ -1,7 +1,8 @@
 #!/bin/sh
 set -eu
 
-CERT_DIR="${1:?certificate directory required}"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+CERT_DIR="${1:-"$SCRIPT_DIR/certs"}"
 mkdir -p "$CERT_DIR"
 
 cert_has_nats_san() {
@@ -40,3 +41,4 @@ openssl x509 -req \
 
 rm -f "$CERT_DIR/server.csr"
 chmod 600 "$CERT_DIR"/*
+echo "generated TLS material in $CERT_DIR"

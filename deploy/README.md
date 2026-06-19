@@ -174,6 +174,8 @@ docker compose -f deploy/docker-compose.canary.yml exec core-stable wget -qO- ht
 
 | 变量 | 说明 | 默认 |
 |---|---|---|
+| `NATS_CORE_PASSWORD` | core NATS 凭证（必填，禁明文入仓） | — |
+| `NATS_INSIGHT_PASSWORD` | insight NATS 凭证（必填） | — |
 | `STABLE_TAG` | LKG 镜像 tag | `latest` |
 | `CANARY_TAG` | 待验证镜像 tag | `canary` |
 | `INGRESS_PORT` | 入口端口 | `19080` |
@@ -188,6 +190,20 @@ docker compose -f deploy/docker-compose.canary.yml exec core-stable wget -qO- ht
 
 回滚顺序（与起栈相反）：`web → gateway → insight → core`
 
+### NATS 安全收口（SUP-324）
+
+起栈前生成自签 CA 并注入凭证（示例见 `deploy/nats.env.example`）：
+
+```bash
+bash deploy/nats/generate-certs.sh
+export NATS_CORE_PASSWORD='...'
+export NATS_INSIGHT_PASSWORD='...'
+docker compose -f deploy/docker-compose.canary.yml up -d --build
+# 可选验收：bash deploy/nats/verify-nats-security.sh
+```
+
+要点：4222 启用 TLS + 账户 ACL；8222 仅绑定容器 loopback；gateway 不连 NATS。
+
 ---
 
 ## 文件结构
@@ -196,6 +212,8 @@ docker compose -f deploy/docker-compose.canary.yml exec core-stable wget -qO- ht
 deploy/
 ├── docker-compose.alpha.yml    # Alpha 单轨 compose（SUP-339）
 ├── docker-compose.canary.yml   # 金丝雀双轨 compose 主文件
+├── nats/                       # NATS 鉴权/ACL/TLS（SUP-324）
+├── nats.env.example            # NATS 凭证环境变量模板
 ├── nginx/
 │   ├── nginx.conf              # canary upstream server 列表模板
 │   ├── docker-entrypoint.sh    # canary 按副本数生成等权 upstream
