@@ -1,0 +1,225 @@
+# SmartDesk Alpha 环境（单轨模式）
+# 四服务（core / insight / gateway / web）各单实例运行
+# 用于 SUP-183 Alpha/Beta 端到端集成测试验收基线
+#
+# 用法：
+#   docker compose -f deploy/docker-compose.alpha.yml up -d --build
+#   docker compose -f deploy/docker-compose.alpha.yml ps
+#   curl -sf http://localhost:18080/api/    # gateway BFF 聚合路由
+#   curl -sf http://localhost:18080/       # web 入口
+
+name: smartdesk-alpha
+
+x-service-common: &service-common
+  restart: unless-stopped
+  networks: [smartdesk-alpha]
+
+x-core-env: &core-env
+  CORE_HTTP_ADDR: "0.0.0.0:8080"
+  CORE_DATABASE_URL: "${CORE_DATABASE_URL:-postgres://smartdesk:smartdesk@postgres:5432/smartdesk?sslmode=disable}"
+  CORE_ORG_ID: "${CORE_ORG_ID:-default}"
+  CORE_SERVICE_JWT_PUBLIC_KEY: "${CORE_SERVICE_JWT_PUBLIC_KEY:-}"
+  CORE_SERVICE_JWT_PUBLIC_KEY_FILE: "${CORE_SERVICE_JWT_PUBLIC_KEY_FILE:-}"
+  CORE_SERVICE_JWT_AUDIENCE: "${CORE_SERVICE_JWT_AUDIENCE:-core}"
+  CORE_SERVICE_JWT_ISSUER: "${CORE_SERVICE_JWT_ISSUER:-smartdesk-gateway}"
+
+services:
+  # ── 共享依赖 ──────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: alpha-postgres
+    environment:
+      POSTGRES_USER: smartdesk
+      POSTGRES_PASSWORD: smartdesk
+      POSTGRES_DB: smartdesk
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smartdesk"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [smartdesk-alpha]
+
+  redis:
+    image: redis:7-alpine
+    container_name: alpha-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [smartdesk-alpha]
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: alpha-nats
+    command: ["-js", "-m", "8222"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [smartdesk-alpha]
+
+  minio:
+    image: minio/minio:latest
+    container_name: alpha-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [smartdesk-alpha]
+
+  # ── core 服务 ─────────────────────────────────────────────
+  core:
+    <<: *service-common
+    container_name: alpha-core
+    build:
+      context: ../src/smartdesk-core
+      dockerfile: ../../deploy/core/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *core-env
+      SERVICE: core
+      VERSION: alpha
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/readyz >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [smartdesk-alpha]
+
+  # ── insight 服务 ──────────────────────────────────────────
+  insight:
+    <<: *service-common
+    container_name: alpha-insight
+    build:
+      context: ../src/smartdesk-insight
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    environment:
+      ENV: alpha
+      SERVICE: insight
+      VERSION: alpha
+      PORT: "8000"
+      DATABASE_URL: "postgresql+asyncpg://smartdesk:smartdesk@postgres:5432/smartdesk"
+      NATS_URL: "nats://nats:4222"
+      CORE_SERVICE_URL: "${CORE_SERVICE_URL:-http://core:8080}"
+      CORE_SERVICE_TOKEN: "${CORE_SERVICE_TOKEN:-}"
+      CORE_SERVICE_TIMEOUT_SECONDS: "${CORE_SERVICE_TIMEOUT_SECONDS:-5.0}"
+      SERVICE_JWT_ALGORITHM: "${SERVICE_JWT_ALGORITHM:-RS256}"
+      SERVICE_JWT_PUBLIC_KEY: "${SERVICE_JWT_PUBLIC_KEY:-}"
+      SERVICE_JWT_SECRET_KEY: "${SERVICE_JWT_SECRET_KEY:-}"
+      SERVICE_JWT_AUDIENCE: "${SERVICE_JWT_AUDIENCE:-insight}"
+      SERVICE_JWT_ISSUER: "${SERVICE_JWT_ISSUER:-smartdesk-gateway}"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2).read()\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [smartdesk-alpha]
+
+  # ── gateway 服务（BFF 聚合层）──────────────────────────────
+  gateway:
+    <<: *service-common
+    container_name: alpha-gateway
+    image: ${GATEWAY_IMAGE:-allenlilisec/smartdesk-gateway:latest}
+    depends_on:
+      core:
+        condition: service_healthy
+      insight:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      ENV: alpha
+      SERVICE: gateway
+      VERSION: alpha
+      PORT: "3000"
+      CORE_SERVICE_URL: "http://core:8080"
+      INSIGHT_SERVICE_URL: "http://insight:8000"
+      REDIS_URL: "redis://redis:6379"
+      JWT_ALGORITHM: "${JWT_ALGORITHM:-RS256}"
+      JWT_PUBLIC_KEY: "${JWT_PUBLIC_KEY:-}"
+      JWT_SECRET_KEY: "${JWT_SECRET_KEY:-}"
+    ports:
+      - "${GATEWAY_PORT:-3001}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/healthz >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [smartdesk-alpha]
+
+  # ── web 服务 ──────────────────────────────────────────────
+  web:
+    <<: *service-common
+    container_name: alpha-web
+    image: ${WEB_IMAGE:-allenlilisec/smartdesk-web:latest}
+    depends_on:
+      gateway:
+        condition: service_healthy
+    environment:
+      ENV: alpha
+      SERVICE: web
+      VERSION: alpha
+      PORT: "3000"
+      API_BASE_URL: "http://gateway:3000"
+    ports:
+      - "${WEB_PORT:-3002}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/healthz >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [smartdesk-alpha]
+
+  # ── 入口 nginx ────────────────────────────────────────────
+  ingress:
+    image: nginx:alpine
+    container_name: alpha-ingress
+    depends_on:
+      gateway:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    ports:
+      - "${INGRESS_PORT:-18080}:80"
+    volumes:
+      - ./nginx/alpha-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/healthz >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [smartdesk-alpha]
+
+volumes:
+  postgres-data:
+  minio-data:
+
+networks:
+  smartdesk-alpha:
+    driver: bridge
