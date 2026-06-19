@@ -439,6 +439,19 @@ components:
         priority: { type: string, enum: [P1, P2, P3, P4] }
         assignee_id: { type: string, format: uuid, nullable: true }
         category_id: { type: string, format: uuid, nullable: true }
+        csat_score:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 5
+          description: >
+            满意度评分（透出 core Ticket.csat_score）；未评为 null。供右栏「报单人历史工单」列表逐条直接呈现满意度，
+            免去对每条工单再调用一次满意度详情端点即可拼出（SUP-280）。RBAC：能看到该单的角色本就能看其满意度，无新增暴露面。
+        csat_rated_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 满意度评价时间（透出 core Ticket.csat_rated_at）；未评为 null。
         created_at: { type: string, format: date-time }
     TicketAggregate:
       allOf:
