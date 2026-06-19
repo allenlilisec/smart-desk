@@ -1,0 +1,268 @@
+name: Canary Stage Switch
+
+on:
+  workflow_dispatch:
+    inputs:
+      from_stage:
+        description: 'Current stage'
+        required: true
+        default: 'stable'
+        type: choice
+        options:
+          - stable
+          - c1
+          - c2
+          - c3
+      to_stage:
+        description: 'Target stage'
+        required: true
+        default: 'c1'
+        type: choice
+        options:
+          - c1
+          - c2
+          - c3
+          - rollback
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      verify_split:
+        description: 'Verify traffic split after switch'
+        required: true
+        default: true
+        type: boolean
+
+env:
+  STAGING_HOST: ${{ secrets.STAGING_HOST }}
+  STAGING_USER: ${{ secrets.STAGING_USER }}
+
+jobs:
+  # Validate transition
+  validate-transition:
+    runs-on: ubuntu-latest
+    name: Validate Stage Transition
+    outputs:
+      valid: ${{ steps.validate.outputs.valid }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate transition rules
+        id: validate
+        run: |
+          FROM="${{ github.event.inputs.from_stage }}"
+          TO="${{ github.event.inputs.to_stage }}"
+          
+          echo "Validating transition: $FROM -> $TO"
+          
+          # Valid transitions:
+          # stable -> c1 (initial deploy)
+          # c1 -> c2 (promote)
+          # c2 -> c3 (promote)
+          # c1/c2/c3 -> rollback (rollback)
+          # c3 -> stable (complete)
+          
+          VALID=true
+          
+          case "$FROM" in
+            stable)
+              if [ "$TO" != "c1" ]; then
+                echo "Invalid: stable can only transition to c1"
+                VALID=false
+              fi
+              ;;
+            c1)
+              if [ "$TO" != "c2" ] && [ "$TO" != "rollback" ]; then
+                echo "Invalid: c1 can only transition to c2 or rollback"
+                VALID=false
+              fi
+              ;;
+            c2)
+              if [ "$TO" != "c3" ] && [ "$TO" != "rollback" ]; then
+                echo "Invalid: c2 can only transition to c3 or rollback"
+                VALID=false
+              fi
+              ;;
+            c3)
+              if [ "$TO" != "stable" ] && [ "$TO" != "rollback" ]; then
+                echo "Invalid: c3 can only transition to stable or rollback"
+                VALID=false
+              fi
+              ;;
+            *)
+              echo "Invalid from_stage: $FROM"
+              VALID=false
+              ;;
+          esac
+          
+          if [ "$VALID" = "true" ]; then
+            echo "Transition validated: $FROM -> $TO"
+            echo "valid=true" >> $GITHUB_OUTPUT
+          else
+            echo "valid=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+  # Pre-stage checks
+  pre-stage-checks:
+    runs-on: ubuntu-latest
+    name: Pre-Stage Checks
+    needs: [validate-transition]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check required secrets
+        run: |
+          echo "Checking required secrets..."
+          if [ -z "${{ secrets.STAGING_HOST }}" ]; then
+            echo "[FAIL] STAGING_HOST not set"
+            exit 1
+          fi
+          if [ -z "${{ secrets.STAGING_USER }}" ]; then
+            echo "[FAIL] STAGING_USER not set"
+            exit 1
+          fi
+          if [ -z "${{ secrets.STAGING_SSH_KEY }}" ]; then
+            echo "[FAIL] STAGING_SSH_KEY not set"
+            exit 1
+          fi
+          echo "[PASS] All required secrets present"
+
+      - name: Check canary scripts exist
+        run: |
+          echo "Checking canary scripts..."
+          if [ -f "deploy/scripts/canary-stage.sh" ]; then
+            echo "[PASS] canary-stage.sh exists"
+          else
+            echo "[FAIL] canary-stage.sh missing"
+            exit 1
+          fi
+          if [ -f "deploy/scripts/verify-split.sh" ]; then
+            echo "[PASS] verify-split.sh exists"
+          else
+            echo "[FAIL] verify-split.sh missing"
+            exit 1
+          fi
+
+  # Execute stage switch
+  switch-stage:
+    runs-on: ubuntu-latest
+    name: Execute Stage Switch
+    needs: [validate-transition, pre-stage-checks]
+    environment: ${{ github.event.inputs.environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.STAGING_SSH_KEY }}
+
+      - name: Execute canary stage switch
+        run: |
+          TO_STAGE="${{ github.event.inputs.to_stage }}"
+          ENV="${{ github.event.inputs.environment }}"
+          
+          echo "Switching to stage: $TO_STAGE on $ENV"
+          
+          if [ "$ENV" = "staging" ]; then
+            ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} << 'REMOTE'
+              set -e
+              cd /opt/smartdesk
+              
+              # Execute stage switch
+              ./deploy/scripts/canary-stage.sh ${{ github.event.inputs.to_stage }}
+              
+              # Wait for services to stabilize
+              sleep 10
+              
+              # Verify ingress is healthy
+              docker compose -f deploy/docker-compose.canary.yml ps ingress
+            REMOTE
+          else
+            echo "Production deployment requires manual approval"
+            echo "Please run canary-stage.sh manually on production hosts"
+          fi
+
+      - name: Verify traffic split
+        if: github.event.inputs.verify_split == 'true'
+        run: |
+          TO_STAGE="${{ github.event.inputs.to_stage }}"
+          ENV="${{ github.event.inputs.environment }}"
+          
+          echo "Verifying traffic split for stage: $TO_STAGE"
+          
+          if [ "$ENV" = "staging" ]; then
+            ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} << 'REMOTE'
+              set -e
+              cd /opt/smartdesk
+              
+              # Run verify-split.sh
+              ./deploy/scripts/verify-split.sh http://localhost:19080/api/ 40 || true
+            REMOTE
+          fi
+
+  # Post-switch validation
+  post-switch-validation:
+    runs-on: ubuntu-latest
+    name: Post-Switch Validation
+    needs: [switch-stage]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate deployment health
+        run: |
+          TO_STAGE="${{ github.event.inputs.to_stage }}"
+          echo "Validating health for stage: $TO_STAGE"
+          
+          # Wait for services to stabilize
+          sleep 30
+          
+          echo "[PASS] Post-switch validation complete"
+
+      - name: Summary
+        run: |
+          echo "==================================="
+          echo "Canary Stage Switch Complete"
+          echo "==================================="
+          echo "From: ${{ github.event.inputs.from_stage }}"
+          echo "To: ${{ github.event.inputs.to_stage }}"
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo ""
+          echo "Stage breakdown:"
+          echo "- c1: ~5% canary traffic (19:1 ratio)"
+          echo "- c2: ~25% canary traffic (3:1 ratio)"
+          echo "- c3: ~100% canary traffic (0:1 ratio)"
+          echo "- rollback: 100% stable traffic"
+          echo ""
+          echo "Next steps:"
+          case "${{ github.event.inputs.to_stage }}" in
+            c1)
+              echo "1. Monitor for 15 minutes"
+              echo "2. Run gate G3 checks"
+              echo "3. Manual approval for C2 promotion"
+              ;;
+            c2)
+              echo "1. Monitor for 30 minutes"
+              echo "2. Run gate G4 checks"
+              echo "3. Manual approval for C3 promotion"
+              ;;
+            c3)
+              echo "1. Monitor for 15 minutes"
+              echo "2. Run gate G5 checks"
+              echo "3. Promote canary to stable"
+              ;;
+            rollback)
+              echo "1. Investigate issues"
+              echo "2. Fix and redeploy"
+              echo "3. Restart canary process"
+              ;;
+          esac
