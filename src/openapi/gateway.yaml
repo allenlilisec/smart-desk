@@ -111,6 +111,15 @@ paths:
         - { name: status, in: query, schema: { type: string } }
         - { name: priority, in: query, schema: { type: string } }
         - { name: assignee_id, in: query, schema: { type: string, format: uuid } }
+        - name: requester_id
+          in: query
+          schema: { type: string, format: uuid }
+          description: >
+            按报单人过滤（坐席工作台右栏「该报单人历史工单」，SUP-280）。透传 core
+            GET /tickets?requester_id。**在现有角色范围收敛之上叠加裁剪，不得借此越权**：
+            agent/lead 经此过滤后结果仍被本组范围裁剪（跨组工单不返回）；requester 传他人
+            requester_id 时被自己范围裁剪（仅能看到自己的单，他人单返回空）；manager/admin 全局可见。
+            即 requester_id 是「角色范围内的二次过滤」，绝非绕过 RBAC 的全量拉取入口。
         - { name: category_id, in: query, schema: { type: string, format: uuid } }
         - { name: q, in: query, schema: { type: string } }
         - { $ref: '#/components/parameters/Page' }
@@ -446,6 +455,19 @@ components:
         priority: { type: string, enum: [P1, P2, P3, P4] }
         assignee_id: { type: string, format: uuid, nullable: true }
         category_id: { type: string, format: uuid, nullable: true }
+        csat_score:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 5
+          description: >
+            满意度评分（透出 core Ticket.csat_score）；未评为 null。供右栏「报单人历史工单」列表逐条直接呈现满意度，
+            免去对每条工单再调用一次满意度详情端点即可拼出（SUP-280）。RBAC：能看到该单的角色本就能看其满意度，无新增暴露面。
+        csat_rated_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 满意度评价时间（透出 core Ticket.csat_rated_at）；未评为 null。
         created_at: { type: string, format: date-time }
     TicketAggregate:
       allOf:
@@ -453,10 +475,35 @@ components:
         - type: object
           properties:
             description: { type: string }
+            requester: { $ref: '#/components/schemas/RequesterContext' }
             sla: { type: object }
             suggestion: { type: object, description: insight 分类/定级建议 }
             similar: { type: array, items: { type: object }, description: insight 相似工单（懒加载） }
             comments_count: { type: integer }
+    RequesterContext:
+      type: object
+      description: >
+        报单人上下文（坐席工作台右栏「客户上下文」，SUP-280）。由 gateway 透出 +
+        映射，core 无需增补：id←core Ticket.requester_id；display_name/email 由 gateway
+        以 requester_id 解析 core /config/users（User.display_name / User.email）后回填。
+
+        【RBAC 可见域】本对象仅对 **agent / lead / manager / admin** 返回；其中 email
+        （报单人 PII）同样仅这些角色可见。**requester 角色查看自己的工单时不回他人 PII**——
+        其本就只能看到自己的单，requester 字段至多回填自身信息且 email 可省略，绝不暴露其他报单人的身份/邮箱。
+        gateway 依据已验签 roles claim 决定是否注入本对象及 email 字段。
+
+        【D4 红线】不含 org_id，也不透出任何内部租户/组织标识；身份解析在 gateway 内完成，
+        org_id 仅由 gateway 从 JWT 注入下游，不出现在本对外视图。
+      properties:
+        id: { type: string, format: uuid, description: 报单人用户 ID（映射 core Ticket.requester_id） }
+        display_name: { type: string, description: 报单人显示名（映射 core User.display_name） }
+        email:
+          type: string
+          format: email
+          nullable: true
+          description: >
+            报单人邮箱（映射 core User.email）。PII：仅 agent/lead/manager/admin 可见；
+            其它角色或解析失败时为 null/缺省。
     TicketPage:
       type: object
       properties:
