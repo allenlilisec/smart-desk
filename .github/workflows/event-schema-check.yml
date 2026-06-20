@@ -33,8 +33,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: false
-          token: ${{ secrets.SUBMODULE_TOKEN || secrets.GITHUB_TOKEN }}
-          persist-credentials: true
 
       - name: Configure git for private submodules
         run: |
@@ -42,6 +40,8 @@ jobs:
 
       - name: Init and update submodules
         run: git submodule update --init --recursive
+        env:
+          GIT_ASKPASS: /bin/true
 
       - name: Set up Python
         uses: actions/setup-python@v5
