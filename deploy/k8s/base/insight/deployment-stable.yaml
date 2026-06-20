@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: insight-stable
+  namespace: smartdesk-canary
+  labels:
+    app: insight
+    version: stable
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: insight
+      version: stable
+  template:
+    metadata:
+      labels:
+        app: insight
+        version: stable
+    spec:
+      containers:
+        - name: insight
+          image: smartdesk/insight:stable
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: smartdesk-config
+          env:
+            - name: SERVICE
+              value: "insight"
+            - name: VERSION
+              value: "stable"
+            - name: PORT
+              value: "8080"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5

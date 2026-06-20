@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway-stable
+  namespace: smartdesk-canary
+  labels:
+    app: gateway
+    version: stable
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: gateway
+      version: stable
+  template:
+    metadata:
+      labels:
+        app: gateway
+        version: stable
+    spec:
+      containers:
+        - name: gateway
+          image: smartdesk/gateway:stable
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: smartdesk-config
+          env:
+            - name: SERVICE
+              value: "gateway"
+            - name: VERSION
+              value: "stable"
+            - name: PORT
+              value: "3000"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 5
