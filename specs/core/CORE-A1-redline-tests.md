@@ -3,10 +3,10 @@
 > 对应任务：SUP-172「[P4][core][CORE-A] 工单生命周期实现（陈川）」立即可开工项。
 > 事实源：
 > - 接口契约：`src/openapi/core.yaml` v1.1.0
-> - 子系统详设：`specs/core子系统详细设计与实现说明书.md` v2.0（§3.2 / §4.2）
+> - 子系统详设：`specs/core子系统详细设计与实现说明书.md` v3.0（轻量 MVP 事实源）
 > - 集成测试框架：`specs/SmartDesk集成测试策略与用例框架.md`
 >
-> 说明：本文件为**测试设计**，供后续实现时直接落地为 Go 契约/集成测试。当前 repo 尚无 Go 骨架，故先以用例集形式输出。
+> 说明：本文件为**测试设计**，供后续实现时直接落地为 Go 契约/集成测试。当前已实现轻量 MVP 骨架，用例可按 `internal/httpapi/*_test.go` 形式落地。
 
 ---
 
@@ -17,7 +17,7 @@
 | T021 | `/tickets`、`/transitions`、`/watchers`、`/csat` 契约测试 | 单服务契约测试 | 逐 path/schema/状态码/错误模型对齐 `core.yaml`，不依赖真实 PG/NATS |
 | T022 | 红线集成测试 | 集成测试（testcontainers PG+NATS） | 验证「幂等、非法状态跃迁 409、AI/NATS 降级仍 201」三条架构红线 |
 
-前置依赖：CORE-0 骨架（oapi-codegen 生成、`serviceAuth` 中间件、testcontainers 夹具）就绪后方可**编码执行**；但用例设计本身已完成，不阻塞。
+前置依赖：CORE-0 骨架（`serviceAuth` 中间件、store 双实现、testcontainers 夹具）就绪后方可**编码执行**；但用例设计本身已完成，不阻塞。
 
 ---
 
@@ -42,7 +42,7 @@
 | T021-T04 | 缺少必填 | 缺 `description` | 400 / 422；`code=VALIDATION_FAILED` | core.yaml `required:[title,description]` |
 | T021-T05 | 非法 priority | `priority=P0` | 400 / 422；枚举校验失败 | `Priority` enum |
 | T021-T06 | 未认证 | 无 Authorization | 401 | `security: serviceAuth` |
-| T021-T07 | 越权领域过滤（预留） | requester 建单后返回的 `requester_id` 与 `X-User-Id` 一致 | 201；后续 T022 再验越权 | §4.2 |
+| T021-T07 | 越权领域过滤（预留） | requester 建单后返回的 `requester_id` 与 service-jwt `sub` claim 一致 | 201；后续 T022 再验越权 | §4.2 |
 
 ---
 
@@ -131,29 +131,69 @@
 
 ---
 
-## 3. T022 红线集成测试场景
+## 3. MVP 降级测试策略（SUP-447 架构裁决）
+
+> **架构裁决**：MVP 阶段以「轻量实现」为事实源，文档同步更新。本测试设计区分「完整架构测试」与「MVP 降级测试」两条路径。
+
+### 3.1 测试路径分层
+
+| 路径 | 运行环境 | 依赖组件 | 适用阶段 |
+|---|---|---|---|
+| **完整架构测试（T022-A）** | testcontainers PG + NATS JetStream | 真实 PG、NATS、outbox relay、idempotency_keys 表、ticket_status_history 表 | 未来架构回归验证（P4 及以后） |
+| **MVP 降级测试（T022-B）** | in-memory 实现 / mock 存储 | 无真实 PG/NATS、无独立 status_history 表、Idempotency-Key 仅内存级 best-effort | MVP 阶段验收（当前） |
+
+### 3.2 降级语义对照表
+
+| 完整架构行为 | MVP 降级行为 | 验收标准 |
+|---|---|---|
+| `idempotency_keys` 表持久化 key + request hash | 内存级 best-effort（进程内 map） | 同一进程内重复请求返回相同结果；进程重启幂等失效可接受 |
+| `ticket_status_history` 表记录每次状态变更 | 仅内存状态（无持久化 history） | 状态跃迁正确性通过单元测试验证；history 查询返回空/简化数据 |
+| NATS 断开时 `outbox_events` 表积压事件 | 无 NATS、无 outbox | 建单 201 成功即视为降级成功；事件投递不在 MVP 验收范围 |
+| Insight 不可用时异步写回分类建议 | 无 Insight 集成 | `TicketDetail.suggestion` 为空；建单流程不阻塞 |
+| PG 事务保证一致性 | in-memory 存储 | 状态变更即时生效；进程重启数据丢失可接受（MVP 仅演示） |
+
+### 3.3 MVP 阶段验收重点
+
+MVP 阶段优先保证：
+1. **契约层对齐**：HTTP 状态码、响应 schema、错误模型与 `core.yaml` 零漂移（T021 覆盖）
+2. **状态机正确性**：非法跃迁返回 409（内存级状态机实现即可）
+3. **降级红线满足**：AI/NATS 不可用时建单仍 201（通过「无 AI/NATS 集成」实现）
+
+**完整架构测试（T022-A）** 作为「未来架构」章节保留，P4 阶段引入真实 PG+NATS 后启用。
+
+---
+
+## 4. T022 红线集成测试场景
+
+### 4.1 完整架构测试（T022-A）—— 未来架构
 
 运行环境：真实 PG + NATS JetStream（testcontainers），真实 core HTTP server。
 
 ### 3.1 幂等红线
 
-#### IT-A1-001 幂等命中返回首次结果
+#### IT-A1-001 幂等命中返回首次结果（完整架构）
 
 1. 使用同一 `Idempotency-Key: key-001` 和同一 body 连续两次 `POST /tickets`。
 2. 断言：两次均返回 **201**；`id`、`number`、响应体完全一致。
 3. 断言：数据库仅一条 ticket 记录；`idempotency_keys` 表存在 `(org_id='default', key='key-001')` 记录。
 
-#### IT-A1-002 幂等键相同但请求 hash 不一致 → 409
+> MVP 降级（T022-B）：内存级 best-effort，同一进程内幂等有效，进程重启可失效。
+
+#### IT-A1-002 幂等键相同但请求 hash 不一致 → 409（完整架构）
 
 1. 第一次 `POST /tickets` 带 `Idempotency-Key: key-002`，body `{title:"A", description:"B"}`，得 201。
 2. 第二次使用相同 `Idempotency-Key: key-002`，body `{title:"A", description:"C"}`。
 3. 断言：第二次返回 **409**；`code` 提示幂等键冲突/请求不一致。
 4. 断言：数据库仍仅一条对应 ticket。
 
-#### IT-A1-003 transitions 幂等
+> MVP 降级（T022-B）：不强制保存 request hash；重复 key 返回首次结果即可。
+
+#### IT-A1-003 transitions 幂等（完整架构）
 
 1. `POST /tickets/{id}/transitions` 同一 `Idempotency-Key` + 同一 action 重复两次。
 2. 断言：两次均 200；`ticket_status_history` 仅新增一条记录。
+
+> MVP 降级（T022-B）：无 `ticket_status_history` 表；状态跃迁正确性通过单元测试验证。
 
 ---
 
@@ -175,8 +215,10 @@
 每个组合写一个子用例，断言：
 - HTTP 409；
 - `ticket.status` 未改变；
-- `ticket_status_history` 未新增记录；
-- `ticket_timeline` 未新增 `status_changed` 事件。
+- `ticket_status_history` 未新增记录（完整架构）；
+- `ticket_timeline` 未新增 `status_changed` 事件（完整架构）。
+
+> MVP 降级（T022-B）：状态机正确性断言同上；`ticket_status_history`/`ticket_timeline` 无持久化，仅验证内存状态未变。
 
 #### IT-A1-004 resume 不复用为 pending_user 恢复
 
@@ -191,50 +233,93 @@
 
 ---
 
-### 3.3 降级红线（AI / NATS 不可用建单仍 201）
+### 4.4 MVP 降级测试（T022-B）
 
-#### IT-A1-006 NATS 断开时建单成功
+运行环境：in-memory 实现 / mock 存储，无真实 PG/NATS。
+
+#### IT-B1-001 建单成功（无 NATS）
+
+1. `POST /tickets` 正常 body（无 NATS 集成）。
+2. 断言：返回 **201**；ticket 已创建；建单流程不依赖 NATS。
+
+> 降级理由：MVP 无事件总线，建单直接返回 201。
+
+#### IT-B1-002 建单成功（无 Insight）
+
+1. `POST /tickets` 正常 body（无 Insight 集成）。
+2. 断言：返回 **201**；`TicketDetail.suggestion` 为空/未填充；主流程无阻塞。
+
+> 降级理由：MVP 无 AI 分类，suggestion 字段留空。
+
+#### IT-B1-003 状态机非法跃迁
+
+覆盖 §4.2 状态机表的所有非法组合，断言返回 409。
+
+> 降级理由：状态机逻辑不依赖存储层，内存实现即可验证。
+
+---
+
+### 4.5 降级红线（AI / NATS 不可用建单仍 201）—— 完整架构
+
+#### IT-A1-006 NATS 断开时建单成功（完整架构）
 
 1. 停止/隔离 NATS 容器。
 2. `POST /tickets` 正常 body。
 3. 断言：返回 **201**；PG 中 ticket `status=new`；`ticket_timeline` 有 `ticket_created`；`outbox_events` 有未发的 `ticket.created`（`published_at IS NULL`）。
 4. 恢复 NATS，等待 outbox relay 补投；断言事件成功发布。
 
-#### IT-A1-007 insight 不可用时建单成功
+> MVP 阶段：无 NATS、无 outbox 表，此用例不适用（由 T022-B IT-B1-001 覆盖）。
+
+#### IT-A1-007 insight 不可用时建单成功（完整架构）
 
 1. insight 服务未启动（或 NATS 无 insight 消费者）。
 2. `POST /tickets` 正常 body。
 3. 断言：返回 **201**；`TicketDetail.suggestion` 为空/未填充；主流程无阻塞。
 
+> MVP 阶段：由 T022-B IT-B1-002 覆盖。
+
 ---
 
-### 3.4 可见性/越权红线（T022 与 T021 重叠，强化断言）
+### 4.6 可见性/越权红线（完整架构 + MVP 通用）
 
-#### IT-A1-008 requester 不可见他人工单
+#### IT-A1-008 / IT-B1-004 requester 不可见他人工单
 
 - requester A 创建 ticket；requester B `GET /tickets/{id}` → 403（或 404，信息不泄露）。
 
-#### IT-A1-009 CSAT 仅可评自己的 resolved/closed 工单
+> 通用：领域级可见性过滤，不依赖存储层实现。
+
+#### IT-A1-009 / IT-B1-005 CSAT 仅可评自己的 resolved/closed 工单
 
 - requester A 的 ticket resolved；requester B `POST /csat` → 403/404。
 - agent 将 ticket 转至 in_progress 后 requester A `POST /csat` → 409。
 
+> 通用：CSAT 业务规则验证，不依赖存储层实现。
+
 ---
 
-## 4. 与集成测试框架 S-xx 映射
+## 5. 与集成测试框架 S-xx 映射
 
 | 本文件用例 | 集成框架场景 | 备注 |
 |---|---|---|
 | T021-T01~T50 | S-01 / S-05 / S-10 / S-11 | 契约层细化 |
-| IT-A1-001~003 | S-05 / S-19 | 幂等红线 |
-| IT-A1-004~005 | S-05 / S-10 | 状态机 + 7 天窗口 |
-| IT-A1-006~007 | S-02 | 降级红线 |
-| IT-A1-008~009 | S-16 | 越权红线 |
+| IT-A1-001~003 | S-05 / S-19 | 幂等红线（完整架构） |
+| IT-A1-004~005 | S-05 / S-10 | 状态机 + 7 天窗口（完整架构） |
+| IT-A1-006~007 | S-02 | 降级红线（完整架构） |
+| IT-A1-008~009 | S-16 | 越权红线（通用） |
+| IT-B1-001~005 | S-02 / S-05 / S-10 / S-16 | MVP 降级测试 |
 
 ---
 
-## 5. 后续落地动作
+## 6. 后续落地动作
+
+### 6.1 MVP 阶段（当前）
 
 1. CORE-0 骨架就绪后，将 T021 用例落为 `internal/httpapi/*_test.go` 或 `test/contract/*_test.go`（mock repository，仅验 handler/schema 映射）。
-2. T022 落为 `test/integration/core_a1_test.go`，使用 testcontainers PG+NATS 夹具。
+2. T022-B（MVP 降级测试）落为单元测试，验证状态机、越权、降级红线（无 PG/NATS 依赖）。
 3. 与 `api-contract-check` CI 门禁对齐：T021 用例定期跑，防止实现与 `core.yaml` 漂移。
+
+### 6.2 未来架构阶段（P4 及以后）
+
+1. T022-A（完整架构测试）落为 `test/integration/core_a1_test.go`，使用 testcontainers PG+NATS 夹具。
+2. 启用幂等、outbox、status_history 等完整架构测试用例。
+3. 补充 chaos 测试（NATS 断开/恢复、PG failover 等）。

@@ -338,8 +338,26 @@ paths:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
 
-  /healthz: { get: { tags: [config], summary: liveness, security: [], responses: { '200': { description: OK } } } }
-  /readyz:  { get: { tags: [config], summary: readiness（服务本身可接收流量，不强制探测 DB/NATS）, security: [], responses: { '200': { description: OK } } } }
+  /healthz:
+    get:
+      tags: [config]
+      summary: liveness
+      security: []
+      responses:
+        '200': { description: OK }
+
+  /readyz:
+    get:
+      tags: [config]
+      summary: readiness（轻量健康检查，无 DB/NATS 依赖）
+      description: >
+        MVP 阶段轻量实现：仅验证 HTTP server 可响应，不检查 PG/NATS 连接。
+        503 用于 graceful shutdown 场景（进程收到 SIGTERM 后拒绝新请求）。
+        完整架构阶段可扩展为检查 DB/NATS 依赖（SUP-447 架构裁决）。
+      security: []
+      responses:
+        '200': { description: OK }
+        '503': { description: 未就绪（graceful shutdown 中）}
 
 components:
   securitySchemes:
