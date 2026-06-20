@@ -28,6 +28,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Configure git for private submodules
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.SUBMODULE_TOKEN || secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Init and update submodules
+        run: git submodule update --init --recursive
+        env:
+          GIT_ASKPASS: /bin/true
 
       - name: Set up Python
         uses: actions/setup-python@v5
