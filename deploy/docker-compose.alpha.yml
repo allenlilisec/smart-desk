@@ -18,7 +18,16 @@ x-core-env: &core-env
   CORE_HTTP_ADDR: "0.0.0.0:8080"
   CORE_DATABASE_URL: "${CORE_DATABASE_URL:-postgres://smartdesk:smartdesk@postgres:5432/smartdesk?sslmode=disable}"
   CORE_ORG_ID: "${CORE_ORG_ID:-default}"
-  CORE_SERVICE_JWT_PUBLIC_KEY: "${CORE_SERVICE_JWT_PUBLIC_KEY:-}"
+  CORE_SERVICE_JWT_PUBLIC_KEY: |-
+    -----BEGIN PUBLIC KEY-----
+    MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5XBdA4Ud7rH6klxAyxed
+    DsLES+n8tN0UbhBzhnI5YnSVlA8Xet0FhW4PShwVu9CdUpoQeg3ZMjOT3kO0xVt9
+    LXBQ3wNIlCC5RpqWnV58RU5Vv32CGwCemFFue2FwHZz4yOZgDb276jeue6T3Tyc+
+    XULvFRizM5Zc5f6t3SyJM6p5aBR9A9tTJ+yaqhzZvcyPM1M+zUy6VfpqX8hz0h8A
+    jv+lFlemvaIF7J3khFRmlOUz3yqOYeJnqbpHL37zDf0iP4qid8juiD9kLdXVwMDp
+    mhgV4OJd5W6Uh/Vp1K2fw1n70lUkag1mpE3wApRIwzW8kJkswd6wkiHvv7XxO7dy
+    5QIDAQAB
+    -----END PUBLIC KEY-----
   CORE_SERVICE_JWT_PUBLIC_KEY_FILE: "${CORE_SERVICE_JWT_PUBLIC_KEY_FILE:-}"
   CORE_SERVICE_JWT_AUDIENCE: "${CORE_SERVICE_JWT_AUDIENCE:-core}"
   CORE_SERVICE_JWT_ISSUER: "${CORE_SERVICE_JWT_ISSUER:-smartdesk-gateway}"
@@ -161,10 +170,19 @@ services:
       NATS_URL: "tls://insight:${NATS_INSIGHT_PASSWORD:-changeme-insight}@nats:4222"
       NATS_CA_FILE: "/etc/nats/certs/ca.crt"
       CORE_SERVICE_URL: "${CORE_SERVICE_URL:-http://core:8080}"
-      CORE_SERVICE_TOKEN: "${CORE_SERVICE_TOKEN:-}"
+      CORE_SERVICE_TOKEN: "f15cac04d9efde25f9217e7036675d6f78b33d9a72943bf7e8361e077f7c4703"
       CORE_SERVICE_TIMEOUT_SECONDS: "${CORE_SERVICE_TIMEOUT_SECONDS:-5.0}"
       SERVICE_JWT_ALGORITHM: "${SERVICE_JWT_ALGORITHM:-RS256}"
-      SERVICE_JWT_PUBLIC_KEY: "${SERVICE_JWT_PUBLIC_KEY:-}"
+      SERVICE_JWT_PUBLIC_KEY: |-
+        -----BEGIN PUBLIC KEY-----
+        MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5XBdA4Ud7rH6klxAyxed
+        DsLES+n8tN0UbhBzhnI5YnSVlA8Xet0FhW4PShwVu9CdUpoQeg3ZMjOT3kO0xVt9
+        LXBQ3wNIlCC5RpqWnV58RU5Vv32CGwCemFFue2FwHZz4yOZgDb276jeue6T3Tyc+
+        XULvFRizM5Zc5f6t3SyJM6p5aBR9A9tTJ+yaqhzZvcyPM1M+zUy6VfpqX8hz0h8A
+        jv+lFlemvaIF7J3khFRmlOUz3yqOYeJnqbpHL37zDf0iP4qid8juiD9kLdXVwMDp
+        mhgV4OJd5W6Uh/Vp1K2fw1n70lUkag1mpE3wApRIwzW8kJkswd6wkiHvv7XxO7dy
+        5QIDAQAB
+        -----END PUBLIC KEY-----
       SERVICE_JWT_SECRET_KEY: "${SERVICE_JWT_SECRET_KEY:-}"
       SERVICE_JWT_AUDIENCE: "${SERVICE_JWT_AUDIENCE:-insight}"
       SERVICE_JWT_ISSUER: "${SERVICE_JWT_ISSUER:-smartdesk-gateway}"
@@ -199,8 +217,46 @@ services:
       INSIGHT_SERVICE_URL: "http://insight:8000"
       REDIS_URL: "redis://redis:6379"
       JWT_ALGORITHM: "${JWT_ALGORITHM:-RS256}"
-      JWT_PUBLIC_KEY: "${JWT_PUBLIC_KEY:-}"
-      JWT_SECRET_KEY: "${JWT_SECRET_KEY:-}"
+      JWT_PUBLIC_KEY: |-
+        -----BEGIN PUBLIC KEY-----
+        MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5XBdA4Ud7rH6klxAyxed
+        DsLES+n8tN0UbhBzhnI5YnSVlA8Xet0FhW4PShwVu9CdUpoQeg3ZMjOT3kO0xVt9
+        LXBQ3wNIlCC5RpqWnV58RU5Vv32CGwCemFFue2FwHZz4yOZgDb276jeue6T3Tyc+
+        XULvFRizM5Zc5f6t3SyJM6p5aBR9A9tTJ+yaqhzZvcyPM1M+zUy6VfpqX8hz0h8A
+        jv+lFlemvaIF7J3khFRmlOUz3yqOYeJnqbpHL37zDf0iP4qid8juiD9kLdXVwMDp
+        mhgV4OJd5W6Uh/Vp1K2fw1n70lUkag1mpE3wApRIwzW8kJkswd6wkiHvv7XxO7dy
+        5QIDAQAB
+        -----END PUBLIC KEY-----
+      JWT_SECRET_KEY: |-
+        -----BEGIN PRIVATE KEY-----
+        MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDlcF0DhR3usfqS
+        XEDLF50OwsRL6fy03RRuEHOGcjlidJWUDxd63QWFbg9KHBW70J1SmhB6DdkyM5Pe
+        Q7TFW30tcFDfA0iUILlGmpadXnxFTlW/fYIbAJ6YUW57YXAdnPjI5mANvbvqN657
+        pPdPJz5dQu8VGLMzllzl/q3dLIkzqnloFH0D21Mn7JqqHNm9zI8zUz7NTLpV+mpf
+        yHPSHwCO/6UWV6a9ogXsneSEVGaU5TPfKo5h4mepukcvfvMN/SI/iqJ3yO6IP2Qt
+        1dXAwOmaGBXg4l3lbpSH9WnUrZ/DWfvSVSRqDWakTfAClEjDNbyQmSzB3rCSIe+/
+        tfE7t3LlAgMBAAECggEAG4kqC0DFSt8JV4TC3JzvjdSfgmIz9fDigXhv+klodwHO
+        7H9d2LJV9fbeLDgaqPkXKHwHpjOrRsnHNqb24bNiiTra5H5HDkqvHGNz2AcoRZkV
+        KW+CrILyhbf1g9E53L6jYlkOW20onv93wqxrEeYqfJQ1Oq7wMtdvkXAd+wFb+1ss
+        HVAXeGwuHruhdboKa3vRYjmkOlT7dmbttkTWeGQw1GeCfmQP66cGfw9u7GhHuvPN
+        zphzMuHTj78B8fwEIKftZktSIXf7Y4c4N9Ng7xKl9Y62sMgVw8iqGIScvZxFMyCr
+        VM5KW+X9Z3MyxTtqoEKQqCR/90M3jM83a+YCsl6ysQKBgQDyF0Q5L4LugJTElLy6
+        oYiD3GBF5n7xOKZoOy8Cbx3iCs+5rWoPspOnwTWyZYiNOfXZhGpHReHQ4TukCfnp
+        ujb18fQyKt5MaLsNv4eCZT2D/NUVFcX1FARmic+M6ack12orzkYO2Bvl6hMqmnqA
+        AGX5dizJvnqNRS+zUdYnpc6N7wKBgQDynwIwi1zS3+BFT0iYcVaXDjQpa6WKmWjg
+        8tOdTt5GYQZAMIPt7wMwL/zadpJBqeO9viTbgY/OlYyvsw+UC9Hd5hr1uJpdLlE5
+        V6pu4NfQc5Qat8ux0P0PtNlE9KBnwnma+tlt2wNL8/i8MUMld8hPtXGiYYC7XQsY
+        Wf67Yd/gawKBgQDRPoTsPIGZra9oHfrmANpixma75BbSXhmOu6DNJMeaaafTn+yt
+        Nrdi5p+H2zRkhLVXVZkak28zwIlxJmJIv3fjqkZb2iubtWX/4wy4CtNZsn1mJRSd
+        2LhY/EJVVFrwf/Q3eqmZCPdMCL6aMz0wR6fcL2VU1ntMgYFSJ6jHSgu3JwKBgDu9
+        bWOYnSWLXISUbhKjLagKJkvgpqVG+u0QvYxpZA++SjS5/XIzvPw7hK4iLgcfFuWc
+        kSS/dTJv3nFQzNAuTOGvjAnfB5tUEUnmTR/6GwnHu7sMcIp7JCSe6jSxa2HBIAJK
+        LAmBuQEVtLRaCOeL4/XEfpN2IKWB1n6Lgk6PXfm7AoGBAL7nTIYQ/Jks8FA/qkYy
+        jr/IIcVLDKDBq16fx5x5JzmvWihbX8lytOXi8OmFL/hTZFVG1jG1iKoz7LIBbbZP
+        Bw+MWDyEbAbCCqqw9Bd7dpPnbPA0llRaD7tCQTocObmsVy5oZwkvmVOyc9EM1Mjg
+        9uzPuWRMWixhsv6jXOKInjf8
+        -----END PRIVATE KEY-----
+      JWT_SECRET: "qXoTJHdBhchgOqgtmwcVgpUOpTw9ZrShtcAozr2OGW8="
     ports:
       - "${GATEWAY_PORT:-3001}:3000"
     healthcheck:
