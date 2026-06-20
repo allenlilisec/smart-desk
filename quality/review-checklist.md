@@ -42,18 +42,20 @@
 
 #### E.2 事件 payload schema 一致性（新增）
 
-**自动化防线（已落地）**：
+**自动化防线（规划中·依赖 [SUP-406](mention://issue/b226013a-152f-4bfd-9140-c444103bebf6) / [SUP-407](mention://issue/1c7353ce-e983-405c-b732-2f5593dde8c7)，尚未落地）**：
 
-- CI 工作流运行新增脚本 `scripts/event_schema_check.py`，校验事件发布方源码中的事件 payload 与事件契约定义文件（如 `src/events/*.yaml`，具体以 core 契约唯一事实源为准）的 schema 一致；
-- core 契约回归测试覆盖事件 payload 的关键字段、类型及必填约束；
-- 自动拦截：schema 未定义、字段类型/必填约束不一致、调用已废弃/未生效的 schema 版本。
+- 自动化脚本 `scripts/event_schema_check.py`（[SUP-406](mention://issue/b226013a-152f-4bfd-9140-c444103bebf6)）将校验事件发布方源码中的事件 payload 与事件契约定义文件（如 `src/events/*.yaml`，具体以 core 契约唯一事实源为准）的 schema 一致；
+- core 契约回归测试（[SUP-407](mention://issue/1c7353ce-e983-405c-b732-2f5593dde8c7)）将覆盖事件 payload 的关键字段、类型及必填约束；
+- 自动拦截目标：schema 未定义、字段类型/必填约束不一致、调用已废弃/未生效的 schema 版本。
+
+> **当前生效门禁（人工核对先行）**：在 [SUP-406](mention://issue/b226013a-152f-4bfd-9140-c444103bebf6) / [SUP-407](mention://issue/1c7353ce-e983-405c-b732-2f5593dde8c7) 自动化落地前，E.2 以评审人逐字符比对事件发布方 payload 与冻结契约文件（`insight.yaml` / `core.yaml`）为准。
 
 **通过标准（逐条核对，缺一不可）**：
 
-1. CI 中 `scripts/event_schema_check.py` 检查通过；
+1. CI 中 `scripts/event_schema_check.py` 检查通过（[SUP-406](mention://issue/b226013a-152f-4bfd-9140-c444103bebf6) 落地后启用）；
 2. 事件发布方代码中的 payload 字段、类型、必填约束，与事件契约定义文件**逐字符一致**；
 3. 所依赖的事件 schema 版本为当前生效版本——评审人须确认契约指针/版本号指向最新裁决落地的 commit；
-4. 若本 PR 变更了事件 schema，则**schema 文件、发布方实现、消费方实现、`event_schema_check.py` 用例、core 契约回归测试**五者必须同 PR 或同批次同步更新，不允许只改其中一处；
+4. 若本 PR 变更了事件 schema，则**schema 文件、发布方实现、消费方实现、`event_schema_check.py` 用例（[SUP-406](mention://issue/b226013a-152f-4bfd-9140-c444103bebf6) 落地后启用）、core 契约回归测试**五者必须同 PR 或同批次同步更新，不允许只改其中一处；
 5. 对于自动检查未覆盖场景（动态构造 payload、非标准事件客户端、新增事件类型未纳入配置等），检视人须手工补充核对。
 
 **未通过动作**：E.1、E.2 任一子检查未通过，检视人应驳回（request changes），不得合入。
@@ -68,10 +70,10 @@
 - [ ] E.1 调用方代码中的外部端点路径与 `src/openapi/*.yaml` 最终契约逐字符一致
 - [ ] E.1 所依赖的 OpenAPI 契约版本为当前生效版本（submodule/契约指针已指向最新裁决落地的 commit）
 - [ ] E.1 若本 PR 变更了 OpenAPI 契约，契约文件、提供方实现、调用方实现、api-contract-check 用例已同批次同步更新
-- [ ] E.2 CI 中 `scripts/event_schema_check.py` 检查通过
+- [ ] E.2 CI 中 `scripts/event_schema_check.py` 检查通过（[SUP-406](mention://issue/b226013a-152f-4bfd-9140-c444103bebf6) 落地后启用）
 - [ ] E.2 事件发布方代码中的 payload 与事件契约定义文件最终 schema 逐字符一致
 - [ ] E.2 所依赖的事件 schema 版本为当前生效版本
-- [ ] E.2 若本 PR 变更了事件 schema，schema 文件、发布方实现、消费方实现、event_schema_check 用例、core 契约回归测试已同批次同步更新
+- [ ] E.2 若本 PR 变更了事件 schema，schema 文件、发布方实现、消费方实现、event_schema_check 用例（[SUP-406](mention://issue/b226013a-152f-4bfd-9140-c444103bebf6) 落地后启用）、core 契约回归测试已同批次同步更新
 - [ ] 检视人已逐条核验并通过（含自动检查未覆盖场景）
 ```
 
