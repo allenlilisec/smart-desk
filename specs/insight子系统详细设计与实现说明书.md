@@ -496,7 +496,7 @@ gateway `POST /tickets/{id}/suggestion` 流程：
 | O-1 | **`insight.classification_suggested` payload 已按 D1 固化为扁平 `ClassificationSuggestedPayload`，core 消费侧需按 `predicted_category_id`/`confidence`/`priority`/`applied` 写入 `ClassificationSuggestion`。** | core 写回路径 | 石磊（core）/ 梁栋 | 若 core 仍按嵌套 `PredictResult` 消费，将导致写回字段错位。 |
 | O-2 | **向量检索二期方案**：一期用 PG 全文检索；二期是否引入 `pgvector` 或 OpenSearch，直接影响 `similarity_index.embedding` 列与索引设计。 | INS-4 | 梁栋 | 契约已前向兼容，但存储选型需在 M3 后决定。 |
 | O-3 | **邮件网关选择**：一期 SMTP 最简单，但生产环境是否统一用邮件 SaaS/网关（如 SendGrid/企业邮件网关）影响 `mailer.py` 抽象。 | INS-6 | 运维/架构 | 需在 M3 前冻结，否则通知通道可能无法投产。 |
-| O-4 | **M4 事件 payload 固化**：`ticket.commented`、`ticket.merged` 当前在 `insight.yaml DomainEvent` 中列为“M4 固化前不约束”。M4 必须给出确定性 schema 并 bump version（若需）。 | 事件契约 | 梁栋/秦诺 | `insight.classification_suggested` 已在 v1 固化；剩余未固化事件消费侧应只读取已定义字段，避免强依赖。 |
+| O-4 | **M4 剩余事件 payload 固化**：`ticket.commented`、`ticket.merged` 当前在 `insight.yaml DomainEvent` 中列为“M4 固化前不约束”。M4 必须给出确定性 schema 并 bump version（若需）。 | 事件契约 | 梁栋/秦诺 | `insight.classification_suggested` 已在 v1 固化；剩余未固化事件消费侧应只读取已定义字段，避免强依赖。 |
 | O-5 | **漏事件补偿机制**：NATS 不可用时，insight 如何从 core 批量同步历史事件？是否开放内部补偿接口？ | 可靠性 | 架构团队 | 若缺失补偿，AI 写回与统计在总线故障期间会丢数据。 |
 | O-6 | **分类树同步方式**：insight 是定期从 core 同步 `categories`，还是通过事件投影维护本地只读副本？ | INS-2 | core + insight | 影响分类器实时性与一致性。 |
 | O-7 | **灰度策略**：M4 是否按组织/用户/流量比例灰度 AI 建议？若灰度，gateway 还是 insight 负责开关？ | M4 发布 | 架构/产品 | 影响 `mode`/`auto_fill_recommended` 的实际控制点。 |
