@@ -32,7 +32,11 @@ Alpha 环境提供**真实四服务（core / insight / gateway / web）单实例
 
 ```bash
 # 从仓库根目录执行
-docker compose -f deploy/docker-compose.alpha.yml up -d --build
+# 1) 生成 Alpha 密钥（SERVICE_JWT 密钥对 + CORE_SERVICE_TOKEN + JWT_SECRET）
+python deploy/scripts/generate-alpha-secrets.py
+
+# 2) 拉起环境
+docker compose -f deploy/docker-compose.alpha.yml --env-file deploy/alpha/.env up -d --build
 
 # 查看服务状态
 docker compose -f deploy/docker-compose.alpha.yml ps
@@ -88,6 +92,20 @@ docker compose -f deploy/docker-compose.alpha.yml logs -f
 | `INGRESS_PORT` | 入口端口 | `18080` |
 | `GATEWAY_PORT` | Gateway 直连端口 | `3001` |
 | `WEB_PORT` | Web 直连端口 | `3002` |
+
+#### Alpha 服务密钥（SUP-375 / SUP-376）
+
+运行 `deploy/scripts/generate-alpha-secrets.py` 生成 `deploy/alpha/.env`（已 gitignore）。与 gateway `ServiceJwtService` 对齐：
+
+| 变量 | 消费方 | 说明 |
+|------|--------|------|
+| `SERVICE_JWT_PRIVATE_KEY` | gateway | RS256 私钥，运行时签发 `aud=insight` 的 per-request service-jwt |
+| `SERVICE_JWT_PUBLIC_KEY` | insight | 验签 gateway→insight 入站调用 |
+| `CORE_SERVICE_JWT_PUBLIC_KEY` | core | 验签 `aud=core` 的 service-jwt（与上列公钥相同） |
+| `CORE_SERVICE_TOKEN` | insight | 预签发静态 token（`aud=core`，insight→core `/internal/users/{id}`） |
+| `JWT_SECRET` | gateway | 用户会话 JWT 签名（≥32 字节随机值） |
+
+`CORE_SERVICE_TOKEN` 由脚本用与 gateway 相同的私钥签发，`sub=00000000-0000-4000-8000-000000000001`（Alpha insight 服务身份），`roles=["admin"]`，`org_id=default`，TTL 365 天。
 
 ### 回滚操作
 
