@@ -6,3 +6,5 @@ __pycache__/
 *.pyc
 .DS_Store
 deploy/staging/
+deploy/alpha/.env
+deploy/alpha/keys/

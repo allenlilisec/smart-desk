@@ -3,7 +3,8 @@
 # 用于 SUP-183 Alpha/Beta 端到端集成测试验收基线
 #
 # 用法：
-#   docker compose -f deploy/docker-compose.alpha.yml up -d --build
+#   python deploy/scripts/generate-alpha-secrets.py   # 首次：生成 deploy/alpha/.env
+#   docker compose -f deploy/docker-compose.alpha.yml --env-file deploy/alpha/.env up -d --build
 #   docker compose -f deploy/docker-compose.alpha.yml ps
 #   curl -sf http://localhost:18080/api/    # gateway BFF 聚合路由
 #   curl -sf http://localhost:18080/       # web 入口
@@ -117,6 +118,8 @@ services:
   core:
     <<: *service-common
     container_name: alpha-core
+    env_file:
+      - alpha/.env
     build:
       context: ../src/smartdesk-core
       dockerfile: ../../deploy/core/Dockerfile
@@ -143,6 +146,8 @@ services:
   insight:
     <<: *service-common
     container_name: alpha-insight
+    env_file:
+      - alpha/.env
     build:
       context: ../src/smartdesk-insight
     depends_on:
@@ -183,6 +188,8 @@ services:
     <<: *service-common
     container_name: alpha-gateway
     image: ${GATEWAY_IMAGE:-allenlilisec/smartdesk-gateway:latest}
+    env_file:
+      - alpha/.env
     depends_on:
       core:
         condition: service_healthy
@@ -195,12 +202,15 @@ services:
       SERVICE: gateway
       VERSION: alpha
       PORT: "3000"
-      CORE_SERVICE_URL: "http://core:8080"
-      INSIGHT_SERVICE_URL: "http://insight:8000"
+      CORE_BASE_URL: "http://core:8080"
+      INSIGHT_BASE_URL: "http://insight:8000"
       REDIS_URL: "redis://redis:6379"
-      JWT_ALGORITHM: "${JWT_ALGORITHM:-RS256}"
-      JWT_PUBLIC_KEY: "${JWT_PUBLIC_KEY:-}"
-      JWT_SECRET_KEY: "${JWT_SECRET_KEY:-}"
+      REDIS_ENABLED: "true"
+      JWT_SECRET: "${JWT_SECRET:-}"
+      JWT_ISSUER: "${JWT_ISSUER:-smartdesk-gateway}"
+      JWT_AUDIENCE: "${JWT_AUDIENCE:-smartdesk}"
+      SERVICE_JWT_PRIVATE_KEY: "${SERVICE_JWT_PRIVATE_KEY:-}"
+      SERVICE_JWT_PUBLIC_KEY: "${SERVICE_JWT_PUBLIC_KEY:-}"
     ports:
       - "${GATEWAY_PORT:-3001}:3000"
     healthcheck:
