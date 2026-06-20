@@ -182,7 +182,9 @@ services:
   gateway:
     <<: *service-common
     container_name: alpha-gateway
-    image: ${GATEWAY_IMAGE:-allenlilisec/smartdesk-gateway:latest}
+    build:
+      context: ../src/smartdesk-gateway
+      dockerfile: ../../deploy/gateway/Dockerfile
     depends_on:
       core:
         condition: service_healthy
@@ -215,7 +217,9 @@ services:
   web:
     <<: *service-common
     container_name: alpha-web
-    image: ${WEB_IMAGE:-allenlilisec/smartdesk-web:latest}
+    build:
+      context: ../src/smartdesk-web
+      dockerfile: ../../deploy/web/Dockerfile
     depends_on:
       gateway:
         condition: service_healthy
