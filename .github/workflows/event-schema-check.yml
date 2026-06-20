@@ -1,0 +1,49 @@
+name: Event Schema Check
+
+# 门禁 G-X-E：跨服务领域事件 payload 字段与冻结契约（src/openapi/insight.yaml）逐字段比对。
+# 与 G-X（api-contract-check 校端点路径）双检。PR 必过项（required check）。
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/openapi/**'
+      - 'src/**'
+      - 'scripts/event_schema_check.py'
+      - 'scripts/event-schema-check.json'
+      - 'scripts/requirements.txt'
+      - 'tests/contract/**'
+      - '.github/workflows/event-schema-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/openapi/**'
+      - 'src/**'
+      - 'scripts/event_schema_check.py'
+      - 'scripts/event-schema-check.json'
+      - 'scripts/requirements.txt'
+      - 'tests/contract/**'
+      - '.github/workflows/event-schema-check.yml'
+
+jobs:
+  event-schema-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r scripts/requirements.txt
+
+      - name: Run event-schema-check on production sources
+        run: python scripts/event_schema_check.py --config scripts/event-schema-check.json
+
+      - name: Run event-schema-check unit tests
+        run: python tests/contract/test_event_schema_check.py

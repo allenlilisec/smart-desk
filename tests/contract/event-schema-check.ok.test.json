@@ -1,0 +1,8 @@
+{
+  "schema_spec": "src/openapi/insight.yaml",
+  "roots": [
+    { "name": "ok-fixture", "path": "tests/contract/fixtures/event-publish-ok" }
+  ],
+  "exclude_dirs": [],
+  "allowlist": {}
+}

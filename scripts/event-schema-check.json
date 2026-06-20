@@ -1,0 +1,12 @@
+{
+  "schema_spec": "src/openapi/insight.yaml",
+  "roots": [
+    { "name": "smartdesk-core", "path": "src/smartdesk-core" },
+    { "name": "smartdesk-insight", "path": "src/smartdesk-insight" }
+  ],
+  "exclude_dirs": [
+    "src/smartdesk-core/tests",
+    "src/smartdesk-insight/tests"
+  ],
+  "allowlist": {}
+}
