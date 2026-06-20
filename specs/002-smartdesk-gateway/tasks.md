@@ -14,7 +14,7 @@
 
 ## 0. 与 main 现有 `src/smartdesk-gateway` 的 done / gap / drift 初判（P4 输入）
 
-> 检视基线：submodule@`5923278`。结论：**GW-1/GW-2 MVP 已落地**；GW-3~5 与全局守卫注册、契约全覆盖仍为 gap。
+> P4 刷新（2026-06-17）：当前检视基线为 submodule@`ac507b3`。结论：**GW-1/GW-2 MVP 已落地，OQ-W2 HttpOnly refresh cookie 已落地，D4 对外 `org_id` 漂移已闭环，D2 契约描述漂移已由梁栋裁决并按 `gateway.yaml` 修订闭环**；GW-3~5、`/readyz` 真探活、Redis 滑窗限流、契约全覆盖仍为 gap。
 
 ### 0.1 done（12 项，可直接消费）
 
@@ -23,30 +23,34 @@
 | 对外契约 | `src/openapi/gateway.yaml` | ✅ 冻结，34 operations |
 | 模块详设 | `specs/gateway子系统详细设计与实现说明书.md` v1.0 | ✅ 冻结 |
 | GW-1 登录 | `AuthController` POST `/auth/login` | ✅ LocalProvider + JWT |
-| GW-1 刷新/登出 | POST `/auth/refresh`, `/auth/logout` | ✅ Redis 会话 |
-| GW-1 当前用户 | GET `/auth/me` | ✅ JWT claims |
+| GW-1 刷新/登出 | POST `/auth/refresh`, `/auth/logout` | ✅ Redis 会话 + `sd_rt` HttpOnly Cookie |
+| GW-1 当前用户 | GET `/auth/me` | ✅ JWT claims；对外不暴露 `org_id` |
+| GW-2 工单 stub 响应 | GET/PATCH `/tickets/{id}` | ✅ 内部保留 `org_id` 授权，对外响应剥离 `org_id` |
 | GW-1 JWT/Redis | `JwtStrategy`, `RedisModule` | ✅ MVP |
-| GW-1 e2e | `test/app.e2e-spec.ts` | ✅ 认证链路 |
+| GW-1 e2e | `test/app.e2e-spec.ts` | ✅ 认证链路 + refresh cookie + D4 回归 |
 | GW-2 角色矩阵 | `rbac/roles.ts` | ✅ Action 枚举 |
 | GW-2 守卫 | `RbacGuard`, `@RequireAction` | ✅ 单元 + 路由级 |
 | GW-2 审计 | `AuditService.recordForbidden` | ✅ 403 埋点 |
 | GW-2 越权 e2e | `roles.spec.ts` + stub tickets | ✅ manager 禁改 |
 | 健康检查 | `HealthController` `/healthz` | ✅ 无鉴权 |
+| 基础限流 | `ThrottlerModule` + `test/throttler.e2e-spec.ts` | ✅ 全局/auth 429 基础覆盖 |
 
 ### 0.2 gap（54 项 —— 本清单 T013+ 覆盖）
 
-- **全局守卫未注册**：`GlobalJwtAuthGuard`/`RbacGuard` 已在 `AuthModule` provider 注册，但 tickets stub 仍用局部 `JwtAuthGuard`；全路由 `@RequireAction` 未覆盖 34 operations
+- **局部守卫冗余 / 全路由动作未覆盖**：`GlobalJwtAuthGuard`/`RbacGuard` 已全局注册，但 tickets/admin stub 仍保留局部 `JwtAuthGuard`；全路由 `@RequireAction` 未覆盖 34 operations
 - **GW-3 BFF**：`TicketsController`/`AdminController` 为 stub；无 `CoreClient`/`InsightClient`；28/34 operations 未实装
-- **GW-4 限流**：`ThrottlerModule` 仅 auth 路由；无 Redis 滑窗 `RateLimitGuard`、无附件上传限流、429 契约未全覆盖
+- **GW-4 限流**：已有 Nest Throttler 基础限流；无 Redis 滑窗 `RateLimitGuard`、无附件上传限流、`Retry-After`/429 契约未全覆盖
 - **GW-5 服务令牌**：无 service-jwt 签发、mTLS `HttpsAgent`、下游 `X-User-*` 透传头完善
-- **readyz**：未探活 Redis/core/insight
+- **readyz**：端点存在但未探活 Redis/core/insight
 - **契约 CI**：`api-contract-check` 未接入 gateway submodule CI
 
-### 0.3 drift（1 项）
+### 0.3 drift（P4 刷新）
 
 | # | 漂移 | 影响 | 处置 |
 |---|---|---|---|
-| D-1 | `GET /auth/me` 响应仍含 `org_id`（`auth.service.ts`），gateway.yaml `Me` schema 已按 **D4 裁决删除 org_id** | 契约漂移，web 可能误消费 | **T018** 移除字段并对照 gateway.yaml 更新 e2e |
+| D-1 | `GET /auth/me` 响应曾含 `org_id`，gateway.yaml `Me` schema 已按 **D4 裁决删除 org_id** | 契约漂移，web 可能误消费 | **已闭环**：`AuthService.toMe()` 移除字段，单测 + e2e 增加不暴露断言 |
+| D-1b | `GET /tickets/{id}` stub 响应曾含内部 `org_id`，gateway.yaml `Ticket` / `TicketAggregate` schema 无该字段 | 契约漂移，浏览器侧可见内部租户字段 | **已闭环**：内部授权继续使用 `org_id`，对外 `PublicTicket` 响应剥离字段，单测 + e2e 增加不暴露断言 |
+| D-2 | `gateway.yaml` `/tickets/{id}` 详情描述与 `TicketAggregate.similar` 曾暗示相似推荐内联聚合；系统详设 D2 要求相似推荐独立懒加载 | 文档/契约描述层漂移，可能误导实现为同步聚合 insight | **已裁决并闭环**：梁栋裁定修订契约；`gateway.yaml` summary 已改为 core 主体 + `Ticket.suggestion`，并已移除 `TicketAggregate.similar`，相似推荐走 `/tickets/{id}/similar` |
 
 ---
 
@@ -84,11 +88,11 @@
 **Independent Test**：合法登录得 token；refresh 轮转；logout 失效；me 返回 roles。
 
 - [ ] T013 [P] [GW-1] [US2] 契约测试：`/auth/login` `/auth/refresh` `/auth/logout` `/auth/me` 状态码与 schema
-- [ ] T014 [GW-1] [US2] **drift 修复 D-1**：`AuthService.buildMe()` 移除 `org_id`；更新 `auth.dto.ts` 与 e2e 断言
+- [x] T014 [GW-1] [US2] **drift 修复 D-1**：`AuthService.toMe()` 移除 `org_id`；更新单测与 e2e 断言（P4 2026-06-17）
 - [ ] T015 [P] [GW-1] [US2] 登录失败统一 401 + 审计（防枚举：message 泛化）
 - [ ] T016 [P] [GW-1] [US2] Refresh token 轮转：旧 refresh 失效、并发 refresh 串行化（Redis 锁）
 - [ ] T017 [GW-1] [US2] Logout：删除 Redis 会话 + refresh 黑名单
-- [ ] T018 [GW-1] [US2] `GET /auth/me` 返回 `{sub, email, display_name, roles[]}` 严格对照 gateway.yaml `Me`
+- [x] T018 [GW-1] [US2] `GET /auth/me` 返回 `{user_id, username, display_name, roles[]}` 严格对照 gateway.yaml `Me`（P4 2026-06-17）
 - [ ] T019 [P] [GW-1] [US2] IdP 抽象：`IdentityProvider` 接口预留 OIDC stub（M4，不阻塞 M2）
 - [ ] T020 [GW-1] [US2] 认证 e2e 回归：login→me→refresh→logout 全链路（依赖 T014）
 
@@ -174,7 +178,7 @@
 - [ ] T055 [P] [GW-3c] [US3] `GET /tickets/{id}/similar` → insight `POST /similarity/search`（D2，失败降级空列表）
 - [ ] T056 [GW-3c] [US3] `GET /tickets/{id}/suggestion` 读 core `Ticket.suggestion`（D1，不另调 insight）
 - [ ] T057 [GW-3c] [US3] `POST /tickets/{id}/suggestion` 采纳/纠偏 → core 应用 + insight `/feedback/classification`
-- [ ] T058 [P] [GW-3c] [US3] 详情 `TicketAggregate` 组装（core 详情 + 可选 similar 懒加载，不阻塞主路径）
+- [ ] T058 [P] [GW-3c] [US3] 详情 `TicketAggregate` 组装（core 工单主体 + `Ticket.suggestion`；similar 不内联，走 `/tickets/{id}/similar` 懒加载）
 - [ ] T059 [GW-3c] [US3] e2e：insight 不可用 similar 返回 200 空列表（US-3.3 AC3 降级）
 
 **Checkpoint**：D1/D2 聚合路径闭合，M3 智能增强可演示。

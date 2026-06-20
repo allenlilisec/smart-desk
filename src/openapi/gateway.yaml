@@ -132,7 +132,7 @@ paths:
     parameters: [{ $ref: '#/components/parameters/TicketId' }]
     get:
       tags: [tickets]
-      summary: 工单详情（聚合 core 详情 + insight 相似/建议；越权 403）
+      summary: 工单详情（聚合 core 工单主体，含 Ticket.suggestion 建议字段；相似推荐不在主聚合内、独立懒加载见 GET /tickets/{id}/similar；越权 403）
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TicketAggregate' } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -477,8 +477,7 @@ components:
             description: { type: string }
             requester: { $ref: '#/components/schemas/RequesterContext' }
             sla: { type: object }
-            suggestion: { type: object, description: insight 分类/定级建议 }
-            similar: { type: array, items: { type: object }, description: insight 相似工单（懒加载） }
+            suggestion: { type: object, description: 工单建议字段（core 工单主体携带，随详情同步带出） }
             comments_count: { type: integer }
     RequesterContext:
       type: object
