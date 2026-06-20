@@ -1,0 +1,8 @@
+{
+  "schema_spec": "src/openapi/insight.yaml",
+  "roots": [
+    { "name": "drift-fixture", "path": "tests/contract/fixtures/event-publish-drift" }
+  ],
+  "exclude_dirs": [],
+  "allowlist": {}
+}

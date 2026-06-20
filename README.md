@@ -77,6 +77,42 @@ docker compose -f deploy/docker-compose.canary.yml up -d --build
 ./deploy/scripts/verify-split.sh http://localhost:19080/api/ 200
 ```
 
+## 契约门禁工具（G-X / G-X-E）
+
+冻结契约 [`src/openapi/insight.yaml`](src/openapi/insight.yaml) 是前后端、跨服务的唯一事实源。两条 CI 必过项据此双检：
+
+| 门禁 | 脚本 | 校验对象 |
+|---|---|---|
+| **G-X** | `scripts/api_contract_check.py` | 调用方端点路径与 OpenAPI 提供方契约一致（路径 / 方法 / 废弃路径） |
+| **G-X-E** | `scripts/event_schema_check.py` | 跨服务领域事件 **payload 字段名**与冻结契约逐字段一致（缺 required / 字段改名 / 未定义新字段） |
+
+### G-X-E 运行说明
+
+```bash
+# 生产源（CI 中子模块未检出时自动跳过对应扫描根，退出 0）
+python scripts/event_schema_check.py --config scripts/event-schema-check.json
+
+# 自测（fixture）
+python -m pytest tests/contract/test_event_schema_check.py -q
+```
+
+退出码：`0` 无漂移；`1` 发现漂移 / 缺 required / 未定义字段；`2` 用法或解析错误。
+
+判定规则：按信封 `event_type` 硬编码映射到 payload schema（与契约 §3.1 表一致，SUP-17 裁决⑤），
+运行时解析 `insight.yaml` 的 `required` / `properties` 键集，对每个发布点构造的字段集合 `F` 比对：
+缺 `required`（`R−F`）或出现未定义字段（`F−P`，已扣除 allowlist）即 FAIL；仅缺 optional 字段放行（向后兼容）。
+发布点识别策略与局限见 `scripts/event_schema_check.py` 模块 docstring。
+
+### 误报处理路径
+
+- **意图性新增 optional 字段**（向后兼容、尚未 bump version）：在 `scripts/event-schema-check.json`
+  的 `allowlist` 临时登记 —— `{"<SchemaName>": ["<新增字段名>"]}`，并在 PR 描述记 version 演进 TODO。
+  allowlist 仅用于「多出 schema 未定义字段」一类，**不得**用于绕过缺 required 或字段改名/删除等破坏性变更。
+- **发布点用变量传 payload 致漏报**（`payload=build_xxx()` 而非内联字面量）：脚本无法提取字段，
+  改用内联字面量或在 PR 说明标注。
+- **契约本身有歧义**：不要自行改契约，回 [SUP-414] @梁栋裁决。
+- 字段改名（如 `from_status`→`from`）会同时触发「缺 required 原名」+「多未定义新名」两条，属预期拦截，应修代码而非加 allowlist。
+
 ## AI 研发虚拟组织
 
 研发执行由一个基于 Multica 平台的虚拟组织承担，组织结构、模型映射、研发流程、质量门禁与成本论证详见
