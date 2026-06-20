@@ -165,7 +165,12 @@ jobs:
   notify-failure:
     name: 失败兜底告警
     needs: [build-canary-stub, gate, deploy-stage, promote]
-    if: failure()
+    if: |
+      always() && (
+        needs.build-canary-stub.result == 'failure' ||
+        needs.deploy-stage.result == 'failure' ||
+        needs.promote.result == 'failure'
+      )
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -183,8 +188,8 @@ jobs:
             - 镜像构建或 GHCR 推送失败
             - compose 部署脚本退出码非零
             - 分流比例验证失败
-            - G 门禁人工确认超时
 
+            门禁超时由 notify-gate-timeout 单独按 P1 路由，不在此重复告警。
             请万全立即查看运行日志，白帆裁决是否执行回滚。
           recipients: ${{ inputs.notify_recipients != '' && inputs.notify_recipients || '万全,白帆,CTO' }}
           webhook_url: ${{ secrets.NOTIFY_WEBHOOK_URL }}
