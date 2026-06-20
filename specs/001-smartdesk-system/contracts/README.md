@@ -4,6 +4,8 @@
 > 本目录**不复制契约**，仅指向接口唯一事实源，避免双份漂移（宪法原则 I/II）。
 > 契约维护与一致性校验：秦诺（`api-contract-check`）；契约最终拍板权：梁栋。
 
+> 📌 **跨服务契约冻结（SUP-398，2026-06-20）**：事件 payload schema 的 producer/consumer 责任边界与演进规则、服务间鉴权（`service-jwt` / `CORE_SERVICE_TOKEN` 签发/校验/注入/轮换/运维规程）已统一冻结于 [`docs/architecture/contracts.md`](../../../docs/architecture/contracts.md)。事件字段事实源仍为 `src/openapi/insight.yaml`。
+
 | 契约 | 服务 | 暴露面 | 文件 |
 |---|---|---|---|
 | gateway | smartdesk-gateway (TS/NestJS) | 对外唯一入口 `/api/v1`，JWT+RBAC+限流，聚合 | [`../../../src/openapi/gateway.yaml`](../../../src/openapi/gateway.yaml) |
