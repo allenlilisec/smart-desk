@@ -8,8 +8,8 @@ mkdir -p "$CERT_DIR" "$DATA_DIR"
 
 /usr/local/bin/generate-certs.sh "$CERT_DIR"
 
-: "${NATS_CORE_PASSWORD:=changeme-core}"
-: "${NATS_INSIGHT_PASSWORD:=changeme-insight}"
+: "${NATS_CORE_PASSWORD:?NATS_CORE_PASSWORD is required}"
+: "${NATS_INSIGHT_PASSWORD:?NATS_INSIGHT_PASSWORD is required}"
 
 export NATS_CORE_PASSWORD NATS_INSIGHT_PASSWORD
 
