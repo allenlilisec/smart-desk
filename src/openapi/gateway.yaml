@@ -519,10 +519,10 @@ components:
         reason: { type: string }
     AssignmentRequest:
       type: object
-      required: [kind]
+      required: [kind, to_user_id]
       properties:
         kind: { type: string, enum: [manual, auto, reassign, escalate] }
-        to_user_id: { type: string, format: uuid, nullable: true }
+        to_user_id: { type: string, format: uuid }
         to_group_id: { type: string, format: uuid, nullable: true }
         reason: { type: string }
     CommentCreate:
