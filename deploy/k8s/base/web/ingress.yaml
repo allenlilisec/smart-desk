@@ -15,7 +15,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: web
+                name: web-stable
                 port:
                   number: 80
 ---
@@ -37,6 +37,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: web
+                name: web-canary
                 port:
                   number: 80
