@@ -92,6 +92,9 @@ docker compose -f deploy/docker-compose.alpha.yml logs -f
 | `INGRESS_PORT` | 入口端口 | `18080` |
 | `GATEWAY_PORT` | Gateway 直连端口 | `3001` |
 | `WEB_PORT` | Web 直连端口 | `3002` |
+| `NEXT_PUBLIC_USE_MOCK` | Web 浏览器端 Mock 开关（Alpha 固定关闭） | `false` |
+| `NEXT_PUBLIC_API_BASE_URL` | Web 浏览器端 Gateway BFF 基址（经 ingress 同域转发） | `/api/v1` |
+| `API_BASE_URL` | Web 服务端 Gateway BFF 基址（容器内直连） | `http://gateway:3000/api/v1` |
 
 #### Alpha 服务密钥（SUP-375 / SUP-376）
 
