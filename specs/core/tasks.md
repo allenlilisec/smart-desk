@@ -111,6 +111,7 @@
 - [x] T029 [CORE-A2] 分派/改派：kind∈{manual,auto,reassign,escalate}；写 assignments+timeline+事件；回写 ticket assignee/group。
 
 > `auto` 未实现真实规则分派；`escalate` 未与 SLA 超时联动（gap）。
+> **2026-06-21 更新**：`auto` 真实规则分派的契约与数据模型已由架构定稿冻结，见 [routing-engine-contract.md](./routing-engine-contract.md)（SUP-471/SUP-473）；`escalate × SLA` 联动仍为独立 gap。
 
 ---
 

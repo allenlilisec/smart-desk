@@ -519,11 +519,15 @@ components:
         reason: { type: string }
     AssignmentRequest:
       type: object
-      required: [kind, to_user_id]
+      required: [kind]
+      description: >-
+        分派请求（透传 core）。`to_user_id` 条件必填：`kind∈{manual,reassign}` 必填；
+        `kind∈{auto,escalate}` 可省略，目标由 core 路由引擎按 routing_rules 解析。无规则命中落默认队列且保持
+        全量工作台可见（fallback）。详见 specs/core/routing-engine-contract.md。
       properties:
         kind: { type: string, enum: [manual, auto, reassign, escalate] }
-        to_user_id: { type: string, format: uuid }
-        to_group_id: { type: string, format: uuid, nullable: true }
+        to_user_id: { type: string, format: uuid, nullable: true, description: 'kind∈{manual,reassign} 必填；kind∈{auto,escalate} 省略则由引擎解析' }
+        to_group_id: { type: string, format: uuid, nullable: true, description: '可选；指定后在该组内按策略选坐席' }
         reason: { type: string }
     CommentCreate:
       type: object
