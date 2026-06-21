@@ -12,15 +12,16 @@
  */
 
 import { Page, Route, Request } from '@playwright/test';
-import { 
-  Ticket, 
-  TicketCreate, 
-  TicketPage, 
-  Me, 
-  TokenPair, 
+import {
+  Ticket,
+  TicketCreate,
+  TicketPage,
+  Me,
+  TokenPair,
   CommentPage,
   TicketAggregate,
   Comment,
+  TicketStatus,
 } from '../fixtures/types';
 import { MOCK_RESPONSES, generateTestId, TEST_USERS } from '../fixtures/test-data';
 
@@ -329,7 +330,7 @@ export async function mockCommentRoutes(page: Page, config: MockConfig = mockCon
       
       // requester 不返回 internal 评论
       const filteredComments = mockState.currentUser?.roles?.includes('requester')
-        ? comments.filter(c => !c.is_internal)
+        ? comments.filter(c => c.visibility !== 'internal')
         : comments;
       
       const pageData: CommentPage = {
@@ -343,19 +344,19 @@ export async function mockCommentRoutes(page: Page, config: MockConfig = mockCon
     } else if (request.method() === 'POST') {
       const body = await request.postDataJSON();
       
-      // 验证权限：internal 评论只有 agent/lead/manager 能创建
-      if (body?.is_internal && !mockState.currentUser?.roles?.some(r => ['agent', 'lead', 'manager', 'admin'].includes(r))) {
+      // 验证权限：internal 评论只有 agent/lead/manager/admin 能创建
+      if (body?.visibility === 'internal' && !mockState.currentUser?.roles?.some(r => ['agent', 'lead', 'manager', 'admin'].includes(r))) {
         await route.fulfill(buildErrorResponse(403, 'Cannot create internal comment'));
         return;
       }
-      
+
       const comment: Comment = {
         id: generateTestId('comment'),
         ticket_id: ticketId,
         author_id: mockState.currentUser?.user_id || 'anonymous',
         author_name: mockState.currentUser?.display_name || 'Unknown',
-        content: body?.content || '',
-        is_internal: body?.is_internal || false,
+        body: body?.body || '',
+        visibility: body?.visibility || 'public',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -379,7 +380,7 @@ export async function mockTransitionRoutes(page: Page, config: MockConfig = mock
     const request = route.request();
     
     if (request.method() !== 'POST') {
-      await route.route.continue();
+      await route.continue();
       return;
     }
     
@@ -393,24 +394,40 @@ export async function mockTransitionRoutes(page: Page, config: MockConfig = mock
       return;
     }
     
-    // 验证状态跃迁（简化版）
-    const validTransitions: Record<string, string[]> = {
-      'open': ['pending', 'closed'],
-      'pending': ['pending_agent', 'pending_requester', 'resolved', 'closed'],
-      'pending_agent': ['pending', 'resolved'],
-      'pending_requester': ['pending', 'resolved', 'closed'],
-      'resolved': ['closed'],
-      'closed': [],
+    // 验证状态跃迁（对齐 gateway.yaml TransitionRequest.action 枚举）
+    const action = body?.action;
+    const validActions: Record<TicketStatus, string[]> = {
+      'new': ['accept', 'cancel'],
+      'accepted': ['start', 'suspend', 'cancel'],
+      'in_progress': ['wait_user', 'resolve', 'suspend'],
+      'pending_user': ['start', 'resolve', 'close'],
+      'resolved': ['close', 'reopen'],
+      'closed': ['reopen'],
+      'suspended': ['resume', 'cancel'],
+      'cancelled': [],
     };
-    
-    const newStatus = body?.status;
-    const validNext = validTransitions[ticket.status] || [];
-    
-    if (!validNext.includes(newStatus)) {
-      await route.fulfill(buildErrorResponse(409, `Invalid transition from ${ticket.status} to ${newStatus}`));
+
+    const validNext = validActions[ticket.status] || [];
+
+    if (!validNext.includes(action)) {
+      await route.fulfill(buildErrorResponse(409, `Invalid transition action '${action}' from status '${ticket.status}'`));
       return;
     }
-    
+
+    // action -> 目标状态映射
+    const actionToStatus: Record<string, TicketStatus> = {
+      'accept': 'accepted',
+      'start': 'in_progress',
+      'wait_user': 'pending_user',
+      'resolve': 'resolved',
+      'close': 'closed',
+      'reopen': 'new',
+      'suspend': 'suspended',
+      'resume': 'new',
+      'cancel': 'cancelled',
+    };
+
+    const newStatus = actionToStatus[action] || ticket.status;
     const updatedTicket = {
       ...ticket,
       status: newStatus,

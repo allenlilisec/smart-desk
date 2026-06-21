@@ -8,20 +8,37 @@
 // 枚举类型
 // ═══════════════════════════════════════════════════════════
 
-/** 工单状态 */
-export type TicketStatus = 
-  | 'open'           // 待受理
-  | 'pending'        // 处理中
-  | 'pending_agent'  // 待回复
-  | 'pending_requester' // 待用户确认
+/** 工单状态（对齐 gateway.yaml '#/components/schemas/Ticket.status'） */
+export type TicketStatus =
+  | 'new'            // 新工单
+  | 'accepted'       // 已受理
+  | 'in_progress'    // 处理中
+  | 'pending_user'   // 待用户确认
   | 'resolved'       // 已解决
-  | 'closed';        // 已关闭
+  | 'closed'         // 已关闭
+  | 'suspended'      // 已挂起
+  | 'cancelled';     // 已取消
 
 /** 工单优先级 */
 export type Priority = 'P1' | 'P2' | 'P3' | 'P4';
 
 /** 用户角色 */
 export type UserRole = 'requester' | 'agent' | 'lead' | 'manager' | 'admin';
+
+/** 评论可见性（对齐 gateway.yaml '#/components/schemas/CommentCreate.visibility'） */
+export type CommentVisibility = 'public' | 'internal';
+
+/** 流转动作（对齐 gateway.yaml '#/components/schemas/TransitionRequest.action'） */
+export type TransitionAction =
+  | 'accept'
+  | 'start'
+  | 'wait_user'
+  | 'resolve'
+  | 'close'
+  | 'reopen'
+  | 'suspend'
+  | 'resume'
+  | 'cancel';
 
 // ═══════════════════════════════════════════════════════════
 // 用户相关类型
@@ -77,35 +94,39 @@ export interface TicketUpdate {
   category_id?: string;
 }
 
-/** 工单模型 */
+/** 工单模型（对齐 gateway.yaml '#/components/schemas/Ticket'） */
 export interface Ticket {
   id: string;
-  org_id: string;
-  requester_id: string;
+  number?: string;
   title: string;
-  description: string;
   status: TicketStatus;
   priority: Priority;
-  category_id: string;
   assignee_id: string | null;
+  category_id: string | null;
   created_at: string;
-  updated_at: string;
-  resolved_at: string | null;
-  closed_at: string | null;
-  first_response_at: string | null;
-  tags: string[];
-  suggestion: any | null;
+  // 扩展字段：用于 Mock 与测试断言
+  org_id?: string;
+  requester_id?: string;
+  description?: string;
+  updated_at?: string;
+  resolved_at?: string | null;
+  closed_at?: string | null;
+  first_response_at?: string | null;
+  tags?: string[];
+  suggestion?: any | null;
 }
 
-/** 工单聚合（详情） */
+/** 工单聚合（详情，对齐 gateway.yaml '#/components/schemas/TicketAggregate'） */
 export interface TicketAggregate extends Ticket {
-  // 可能包含额外的聚合字段
-  requester_name?: string;
-  assignee_name?: string;
-  category_name?: string;
+  requester?: {
+    id: string;
+    display_name: string;
+    email?: string | null;
+  };
+  comments_count?: number;
 }
 
-/** 工单列表响应 */
+/** 工单列表响应（对齐 gateway.yaml '#/components/schemas/TicketPage'） */
 export interface TicketPage {
   items: Ticket[];
   total: number;
@@ -117,25 +138,27 @@ export interface TicketPage {
 // 评论相关类型
 // ═══════════════════════════════════════════════════════════
 
-/** 评论创建请求 */
+/** 评论创建请求（对齐 gateway.yaml '#/components/schemas/CommentCreate'） */
 export interface CommentCreate {
-  content: string;
-  is_internal: boolean;
+  body: string;
+  visibility: CommentVisibility;
+  mentions?: string[];
 }
 
-/** 评论模型 */
+/** 评论模型（对齐 gateway.yaml '#/components/schemas/CommentPage.items'） */
 export interface Comment {
   id: string;
-  ticket_id: string;
+  body: string;
+  visibility: CommentVisibility;
   author_id: string;
-  author_name: string;
-  content: string;
-  is_internal: boolean;
   created_at: string;
-  updated_at: string;
+  // 扩展字段：用于 Mock UI 展示
+  author_name?: string;
+  ticket_id?: string;
+  updated_at?: string;
 }
 
-/** 评论列表响应 */
+/** 评论列表响应（对齐 gateway.yaml '#/components/schemas/CommentPage'） */
 export interface CommentPage {
   items: Comment[];
   total: number;
@@ -147,10 +170,10 @@ export interface CommentPage {
 // 状态流转类型
 // ═══════════════════════════════════════════════════════════
 
-/** 状态流转请求 */
+/** 状态流转请求（对齐 gateway.yaml '#/components/schemas/TransitionRequest'） */
 export interface TransitionRequest {
-  status: TicketStatus;
-  comment?: string;
+  action: TransitionAction;
+  reason?: string;
 }
 
 // ═══════════════════════════════════════════════════════════

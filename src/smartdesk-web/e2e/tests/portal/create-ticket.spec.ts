@@ -124,7 +124,7 @@ test.describe('报单人提单流程', () => {
         
         const createdTicket = mockState.tickets[0];
         expect(createdTicket.title).toBe(TICKET_TEMPLATES.standardTicket.title);
-        expect(createdTicket.status).toBe('open');
+        expect(createdTicket.status).toBe('new');
         expect(createdTicket.requester_id).toBe(TEST_USERS.zhangsan.id);
       }
     });

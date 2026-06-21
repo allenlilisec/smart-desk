@@ -37,7 +37,7 @@ async function createPreconditionTicket(
     requester_id: TEST_USERS.zhangsan.id,
     title: ticketData.title,
     description: ticketData.description,
-    status: overrides.status || 'open',
+    status: overrides.status || 'new',
     priority: ticketData.priority,
     category_id: ticketData.categoryId,
     assignee_id: overrides.assignee_id || null,
@@ -161,7 +161,7 @@ test.describe('用例 1：坐席查看工单队列', () => {
           requester_id: 'user-zhangsan-001',
           title: '无法访问黄区代码仓',
           description: '从昨天开始无法访问 GitLab',
-          status: 'open',
+          status: 'new',
           priority: 'P2',
           category_id: 'category-access-001',
           assignee_id: null,
@@ -289,7 +289,7 @@ test.describe('用例 2：工单详情与评论交互', () => {
       const submitButton = page.locator('[data-testid="submit-comment-button"], button[type="submit"], button:has-text("提交")').first();
 
       if (await commentInput.isVisible().catch(() => false)) {
-        await commentInput.fill(COMMENT_TEMPLATES.internalNote.content);
+        await commentInput.fill(COMMENT_TEMPLATES.internalNote.body);
       }
 
       if (await submitButton.isVisible().catch(() => false) && await submitButton.isEnabled().catch(() => false)) {
@@ -343,7 +343,7 @@ test.describe('用例 2：工单详情与评论交互', () => {
       const submitButton = page.locator('[data-testid="submit-comment-button"], button[type="submit"]').first();
 
       if (await commentInput.isVisible().catch(() => false)) {
-        await commentInput.fill(COMMENT_TEMPLATES.publicReply.content);
+        await commentInput.fill(COMMENT_TEMPLATES.publicReply.body);
       }
 
       if (await submitButton.isVisible().catch(() => false) && await submitButton.isEnabled().catch(() => false)) {
@@ -446,16 +446,16 @@ test.describe('用例 3：工单状态流转', () => {
         const mockState = getMockState();
         const ticket = mockState.tickets.find((t: Ticket) => t.id === 'ticket-001');
         if (ticket) {
-          expect(['pending', 'pending_agent']).toContain(ticket.status);
+          expect(['in_progress']).toContain(ticket.status);
         }
       }
 
       // UI 验证
       const statusBadge = page.locator('[data-testid="ticket-status"], .status-badge, .ticket-status').first();
       const statusText = await statusBadge.textContent().catch(() => '');
-      const isPending = statusText.includes('处理中') || statusText.includes('pending') || statusText.includes('Pending');
+      const isInProgress = statusText.includes('处理中') || statusText.includes('in_progress') || statusText.includes('In Progress');
 
-      expect(isPending || IS_MOCK_MODE).toBeTruthy();
+      expect(isInProgress || IS_MOCK_MODE).toBeTruthy();
     });
   });
 
@@ -471,7 +471,7 @@ test.describe('用例 3：工单状态流转', () => {
           requester_id: 'user-zhangsan-001',
           title: '测试工单',
           description: '测试描述',
-          status: 'pending',
+          status: 'in_progress',
           priority: 'P2',
           category_id: 'category-001',
           assignee_id: 'user-lisi-002',
@@ -530,7 +530,7 @@ test.describe('用例 3：工单状态流转', () => {
     });
   });
 
-  test('状态流转符合预期 - open -> pending -> resolved', async ({ agentPage: page }) => {
+  test('状态流转符合预期 - new -> in_progress -> resolved', async ({ agentPage: page }) => {
     if (IS_MOCK_MODE) {
       await initMockRoutes(page, { enableDelay: false }, 'lisi');
     }
@@ -542,11 +542,11 @@ test.describe('用例 3：工单状态流转', () => {
       const statusBadge = page.locator('[data-testid="ticket-status"], .status-badge').first();
       const initialStatus = await statusBadge.textContent().catch(() => '');
 
-      const isOpen = initialStatus.includes('待受理') || initialStatus.includes('open') ||
-                     initialStatus.includes('Open') || initialStatus.includes('新');
+      const isNew = initialStatus.includes('待受理') || initialStatus.includes('new') ||
+                    initialStatus.includes('New') || initialStatus.includes('新');
 
       // 验证初始状态（允许 Mock 模式跳过）
-      expect(isOpen || IS_MOCK_MODE).toBeTruthy();
+      expect(isNew || IS_MOCK_MODE).toBeTruthy();
     });
 
     await test.step('流转到处理中', async () => {

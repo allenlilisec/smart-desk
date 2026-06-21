@@ -49,7 +49,7 @@ test.describe('我的工单列表', () => {
         requester_id: TEST_USERS.zhangsan.id,
         title: '工单1 - 测试问题',
         description: '这是一个测试工单的描述',
-        status: 'open',
+        status: 'new',
         priority: 'P2',
         category_id: 'category-test-001',
         assignee_id: null,
@@ -220,7 +220,7 @@ test.describe('我的工单列表', () => {
         requester_id: TEST_USERS.zhangsan.id,
         title: '点击查看详情的测试工单',
         description: '这是测试详情跳转的工单',
-        status: 'open',
+        status: 'new',
         priority: 'P2',
         category_id: 'category-test-001',
         assignee_id: null,
@@ -298,7 +298,7 @@ test.describe('我的工单列表', () => {
     
     if (await statusFilter.isVisible().catch(() => false)) {
       // 选择特定状态
-      await statusFilter.selectOption({ value: 'open' });
+      await statusFilter.selectOption({ value: 'new' });
       
       // 等待列表刷新
       await page.waitForTimeout(500);

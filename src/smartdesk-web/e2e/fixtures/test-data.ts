@@ -87,16 +87,16 @@ export const TICKET_TEMPLATES = {
 // ═══════════════════════════════════════════════════════════
 
 export const COMMENT_TEMPLATES = {
-  /** 对外回复 */
+  /** 对外回复（对齐 gateway.yaml CommentCreate.visibility=public） */
   publicReply: {
-    content: '您好，我们已收到您的反馈，正在排查中。',
-    isInternal: false,
+    body: '您好，我们已收到您的反馈，正在排查中。',
+    visibility: 'public' as const,
   },
-  
-  /** 内部备注 */
+
+  /** 内部备注（对齐 gateway.yaml CommentCreate.visibility=internal） */
   internalNote: {
-    content: '需要联系运维团队确认 GitLab 访问权限。',
-    isInternal: true,
+    body: '需要联系运维团队确认 GitLab 访问权限。',
+    visibility: 'internal' as const,
   },
 } as const;
 
@@ -133,7 +133,7 @@ export const MOCK_RESPONSES = {
     requester_id: requesterId,
     title: ticketData.title,
     description: ticketData.description,
-    status: 'open' as TicketStatus,
+    status: 'new' as TicketStatus,
     priority: ticketData.priority,
     category_id: ticketData.categoryId,
     assignee_id: null,
@@ -210,8 +210,8 @@ export function createComment(
     ticket_id: ticketId,
     author_id: authorId,
     author_name: TEST_USERS.lisi.displayName,
-    content: templateData.content,
-    is_internal: templateData.isInternal,
+    body: templateData.body,
+    visibility: templateData.visibility,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
