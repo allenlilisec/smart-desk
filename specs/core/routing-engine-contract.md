@@ -35,7 +35,10 @@ group_members(group_id, user_id, skills_tags text[]?, active, created_at)
 
 routing_rules(id, org_id, sort, active,
               match_category_id uuid?, match_keyword text?, match_source text?, match_priority text?,
-              to_group_id uuid, strategy text[least_load|round_robin] default 'least_load',
+              match_group_id uuid?,        -- 可选：组过滤匹配条件（用于重路由场景）
+              to_group_id uuid NOT NULL,
+              target_user_id uuid?,        -- 可选直派；用户停用时回退组内按 strategy 选坐席（非默认队列）
+              strategy text[least_load|round_robin] default 'least_load',
               created_at, updated_at, deleted_at)
   -- org 内有序规则；多条件 AND（为空的条件视为不约束）；按 sort 升序首条命中即停。
 ```
