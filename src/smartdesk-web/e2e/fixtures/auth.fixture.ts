@@ -63,7 +63,7 @@ export const test = base.extend<TestFixtures>({
        */
       login: async (role: UserRole) => {
         const user = TEST_USERS[role];
-        
+
         // Mock 模式：直接设置 cookie / localStorage
         if (isMockMode) {
           // 先导航到应用 origin，否则 about:blank 无法访问 localStorage
@@ -73,7 +73,7 @@ export const test = base.extend<TestFixtures>({
           }, user);
           return;
         }
-        
+
         // 真实模式：走登录流程
         // TODO: 根据实际登录页面实现
         await page.goto('/login');
@@ -82,7 +82,7 @@ export const test = base.extend<TestFixtures>({
         await page.click('button[type="submit"]');
         await page.waitForURL(/\/(portal|agent|admin)/);
       },
-      
+
       /**
        * 登出
        */
@@ -98,13 +98,13 @@ export const test = base.extend<TestFixtures>({
           await page.goto('/logout');
         }
       },
-      
+
       /**
        * 获取测试用户信息
        */
       getUser: (role: UserRole) => TEST_USERS[role],
     };
-    
+
     await use(auth);
   },
 });
