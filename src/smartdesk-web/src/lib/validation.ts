@@ -167,8 +167,8 @@ export function getMatchConditionDisplay(
   matchCategoryId?: string | null,
   matchGroupId?: string | null,
   matchPriority?: Priority | null,
-  categories?: { id: string; name: string }[],
-  groups?: { id: string; name: string }[]
+  categories?: readonly { readonly id: string; readonly name: string }[],
+  groups?: readonly { readonly id: string; readonly name: string }[]
 ): string {
   const conditions: string[] = [];
   
@@ -201,8 +201,8 @@ export function getMatchConditionDisplay(
 export function getTargetDisplay(
   toGroupId: string,
   targetUserId?: string | null,
-  groups?: { id: string; name: string }[],
-  users?: { id: string; display_name: string }[]
+  groups?: readonly { readonly id: string; readonly name: string }[],
+  users?: readonly { readonly id: string; readonly display_name: string }[]
 ): string {
   let result = '';
   

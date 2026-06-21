@@ -1,23 +1,18 @@
-"use client";
-
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@/components/AuthProvider";
-import { homePathForRoles } from "@/lib/auth";
-import { LoadingSpinner } from "@/components/ui";
-
-export default function HomePage() {
-  const { me, loading } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (loading) return;
-    if (!me) {
-      router.replace("/login");
-      return;
-    }
-    router.replace(homePathForRoles(me.roles));
-  }, [me, loading, router]);
-
-  return <LoadingSpinner />;
+export default function Home() {
+  return (
+    <main className="flex min-h-screen flex-col items-center justify-center p-24">
+      <h1 className="text-4xl font-bold mb-4">SmartDesk</h1>
+      <p className="text-lg text-muted-foreground">
+        智能客服平台前端
+      </p>
+      <div className="mt-8">
+        <a
+          href="/admin/routing-rules"
+          className="text-primary hover:underline"
+        >
+          进入路由规则管理 →
+        </a>
+      </div>
+    </main>
+  );
 }

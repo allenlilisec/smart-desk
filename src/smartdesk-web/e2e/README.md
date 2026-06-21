@@ -1,106 +1,127 @@
-# SmartDesk Web E2E 测试套件
+# SmartDesk Web E2E 测试
 
-基于 Playwright 的端到端测试套件，覆盖「张三提单 → 李四队列 → 评论交互」主链路。
+基于 Playwright 的端到端测试套件。
 
-## 技术栈
+## 快速开始
 
-- **测试框架**: Playwright
-- **语言**: TypeScript
-- **浏览器**: Chromium, Firefox, WebKit
+```bash
+# 1. 安装依赖
+npm install
+
+# 2. 安装 Playwright 浏览器
+npx playwright install
+
+# 3. 配置测试环境
+cp e2e/.env.e2e.example e2e/.env.e2e
+# 编辑 .env.e2e 填入实际值
+
+# 4. 运行测试
+npm run e2e          # 运行所有测试
+npm run e2e:ui       # UI 模式调试
+npm run e2e:mock     # Mock 模式运行
+```
 
 ## 目录结构
 
 ```
 e2e/
-├── fixtures/
-│   ├── auth.fixture.ts      # 认证 fixture（登录状态管理）
-│   ├── test-data.ts         # 测试数据模板
-│   └── types.ts             # TypeScript 类型定义
-├── helpers/
-│   └── api-mock.ts          # API Mock 助手（Mock 模式）
-├── tests/
-│   ├── portal/              # 报单人门户测试
-│   │   ├── create-ticket.spec.ts   # 提单流程
-│   │   └── my-tickets.spec.ts      # 我的工单列表
-│   ├── agent/               # 坐席工作台测试
-│   └── example.spec.ts      # 示例/主干用例骨架
-├── global-setup.ts          # 全局设置
-└── README.md                # 本文件
+├── playwright.config.ts    # Playwright 配置
+├── .env.e2e.example       # 环境变量模板
+├── global-setup.ts        # 全局初始化
+├── fixtures/              # 测试夹具
+│   ├── auth.fixture.ts    # 认证 fixture
+│   └── test-data.ts       # 测试数据
+├── helpers/               # 测试工具
+│   └── api-mock.ts        # API Mock 助手
+└── tests/                 # 测试用例
+    └── example.spec.ts    # 示例/主干用例
 ```
 
 ## 运行模式
 
 ### Mock 模式（默认）
 
-使用 Playwright 的 route API 拦截并模拟 API 响应，无需后端服务。
+不依赖真实 Gateway，使用模拟数据：
 
 ```bash
-# Mock 模式（默认）
-npx playwright test
-
-# 或显式指定
-E2E_MODE=mock npx playwright test
+E2E_MODE=mock npm run e2e
 ```
 
 ### 真实 Gateway 模式
 
-调用真实的 Gateway 服务进行测试。
+连接真实 Gateway 进行测试：
 
 ```bash
-# 真实 Gateway 模式
-E2E_MODE=real E2E_BASE_URL=http://localhost:3001 npx playwright test
-```
+# 编辑 .env.e2e
+E2E_MODE=real
+E2E_GATEWAY_URL=http://your-gateway:8080
 
-## 运行测试
-
-```bash
-# 运行所有测试
+# 运行测试
 npm run e2e
-
-# 运行特定测试文件
-npx playwright test e2e/tests/portal/create-ticket.spec.ts
-
-# UI 模式（调试）
-npm run e2e:ui
-
-# 特定浏览器
-npx playwright test --project=chromium
 ```
 
 ## 测试账号
 
-| 账号 | 角色 | 用途 |
-|------|------|------|
-| zhangsan | requester | 报单人门户测试 |
-| lisi | agent | 坐席工作台测试 |
-| admin | admin | 管理员后台测试 |
+测试账号通过环境变量配置：
 
-## Mock 数据
-
-Mock 数据定义在 `fixtures/test-data.ts` 中：
-
-- 用户信息（TEST_USERS）
-- 工单模板（TICKET_TEMPLATES）
-- 评论模板（COMMENT_TEMPLATES）
-- API 响应模板（MOCK_RESPONSES）
-
-## 环境变量
-
-| 变量 | 说明 | 默认值 |
+| 角色 | 变量 | 默认值 |
 |------|------|--------|
-| E2E_MODE | 运行模式（mock/real） | mock |
-| E2E_BASE_URL | 测试站点基础 URL | http://localhost:3000 |
-| E2E_GATEWAY_URL | Gateway 服务 URL（真实模式） | - |
+| 报单人 | E2E_PORTAL_USER | zhangsan |
+| 坐席 | E2E_AGENT_USER | lisi |
+| 管理员 | E2E_ADMIN_USER | admin |
 
-## 验收标准
+## 编写测试
 
-- ✅ Playwright 配置完成，可运行 `npm run e2e`
-- ✅ 主链路 E2E 用例通过（张三提单 → 李四队列 → 评论交互）
-- ✅ 与真实 Gateway 环境可联调
-- ✅ Mock 模式与真实 Gateway 模式可切换
+### 基础结构
 
-## 相关 Issue
+```typescript
+import { test, expect } from '../fixtures/auth.fixture';
+import { createApiMock } from '../helpers/api-mock';
 
-- [SUP-493](mention://issue/6ad99b94-3d05-460a-8cb5-4577eaa841be) - Playwright E2E 测试套件
-- [SUP-497](mention://issue/d8572578-1446-49ca-90f4-c4c33daba0d6) - 报单人提单流程
-- [SUP-498](mention://issue/7cf5594e-a34a-4694-8a24-aeddb5735557) - 坐席队列与评论交互
+test('测试描述', async ({ page, auth, isMockMode }) => {
+  // 启用 Mock（如需要）
+  const apiMock = createApiMock(page);
+  await apiMock.enableMock();
+  
+  // 登录
+  await auth.login('portal'); // 或 'agent', 'admin'
+  
+  // 测试步骤
+  await page.goto('/portal');
+  
+  // 断言
+  await expect(page).toHaveTitle(/Portal/);
+});
+```
+
+### Mock API
+
+```typescript
+// 设置 Mock 响应
+apiMock.mockTicketCreate({
+  id: 'ticket-001',
+  title: '测试工单',
+  // ...
+});
+
+apiMock.mockTicketList([ticket1, ticket2]);
+apiMock.mockCommentCreate(commentData);
+apiMock.mockStatusTransition('ticket-001', 'in_progress');
+```
+
+## CI/CD
+
+GitHub Actions 配置在 `.github/workflows/e2e.yml`：
+
+- 每次 push/PR 自动运行
+- 生成 HTML 测试报告
+- 失败时自动上传截图
+
+## 依赖
+
+- 父任务: [SUP-493](https://github.com/allenlilisec/smart-desk/issues/493)
+- Gateway BFF: [SUP-492](https://github.com/allenlilisec/smart-desk/issues/492)
+
+## 升级路由
+
+- 契约未就绪 → [@江颜](mention://agent/363b4a3f-bb38-41ac-b4ed-6c9bc9af30c5)

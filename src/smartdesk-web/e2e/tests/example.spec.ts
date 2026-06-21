@@ -4,9 +4,9 @@ import { SAMPLE_TICKET_ZHANGSAN, generateTicketData } from '../fixtures/test-dat
 
 /**
  * 示例 E2E 测试用例
- *
+ * 
  * 演示如何使用 fixtures 和 helpers
- *
+ * 
  * TODO: 根据实际页面实现更新选择器
  */
 
@@ -59,7 +59,7 @@ test.describe('张三提单流程', () => {
     apiMock.mockTicketCreate(mockTicket);
 
     await auth.login('portal');
-
+    
     // TODO: 实现完整的提单流程测试
     // 1. 访问 /portal
     // 2. 点击「新建工单」
@@ -87,7 +87,7 @@ test.describe('李四队列与评论', () => {
     apiMock.mockTicketList([SAMPLE_TICKET_ZHANGSAN]);
 
     await auth.login('agent');
-
+    
     // TODO: 实现队列查看测试
     // 1. 访问 /agent
     // 2. 验证工单列表

@@ -47,9 +47,12 @@ export type TestFixtures = {
 /**
  * 扩展 test，添加认证 fixture
  */
+// 默认 Mock 模式，与 playwright.config.ts / api-mock.ts / global-setup.ts 保持一致
+const isMockMode = (process.env.E2E_MODE || 'mock') === 'mock';
+
 export const test = base.extend<TestFixtures>({
   isMockMode: async ({}, use) => {
-    await use(process.env.E2E_MODE === 'mock');
+    await use(isMockMode);
   },
 
   auth: async ({ page, isMockMode }, use) => {
@@ -60,15 +63,17 @@ export const test = base.extend<TestFixtures>({
        */
       login: async (role: UserRole) => {
         const user = TEST_USERS[role];
-
+        
         // Mock 模式：直接设置 cookie / localStorage
         if (isMockMode) {
+          // 先导航到应用 origin，否则 about:blank 无法访问 localStorage
+          await page.goto('/');
           await page.evaluate((userData) => {
             localStorage.setItem('e2e_auth_user', JSON.stringify(userData));
           }, user);
           return;
         }
-
+        
         // 真实模式：走登录流程
         // TODO: 根据实际登录页面实现
         await page.goto('/login');
@@ -77,12 +82,14 @@ export const test = base.extend<TestFixtures>({
         await page.click('button[type="submit"]');
         await page.waitForURL(/\/(portal|agent|admin)/);
       },
-
+      
       /**
        * 登出
        */
       logout: async () => {
         if (isMockMode) {
+          // 先导航到应用 origin，否则 about:blank 无法访问 localStorage
+          await page.goto('/');
           await page.evaluate(() => {
             localStorage.removeItem('e2e_auth_user');
           });
@@ -91,13 +98,13 @@ export const test = base.extend<TestFixtures>({
           await page.goto('/logout');
         }
       },
-
+      
       /**
        * 获取测试用户信息
        */
       getUser: (role: UserRole) => TEST_USERS[role],
     };
-
+    
     await use(auth);
   },
 });
