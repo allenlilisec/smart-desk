@@ -13,3 +13,6 @@ deploy/alpha/keys/
 dist/
 *.tsbuildinfo
 src/smartdesk-web/.env.local
+src/smartdesk-web/test-results/
+src/smartdesk-web/playwright-report/
+src/smartdesk-web/e2e/results/
