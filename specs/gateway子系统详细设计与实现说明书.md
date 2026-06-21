@@ -269,9 +269,11 @@ refresh token 额外携带 `jti`（一次性刷新后可轮换）。
 | 角色 | 查询参数注入 |
 |---|---|
 | requester | `requester_id = sub`（强制，忽略客户端传入） |
-| agent | `assignee_id = sub` 或组内（lead 管本组） |
-| lead | `group_id = user.group` |
+| agent | `assignee_id = sub` 或 `assignee_id IS NULL` 或组内（lead 管本组） |
+| lead | `group_id = user.group` 或 `assignee_id IS NULL`（未分派工单） |
 | manager / admin | 无额外限制（manager 只读） |
+
+> **Bug B 修复**：全量工作台必须可见未分派工单（梁栋裁决，2026-06-21）。agent/lead 可见组内未分派工单。
 
 ### 4.5 路由分组摘要
 
