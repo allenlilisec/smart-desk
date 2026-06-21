@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { TicketAggregate, Comment } from '../../../../e2e/fixtures/types';
+import { TicketAggregate, Comment } from '@/types';
 
 const statusMap: Record<string, string> = {
   new: '新工单',

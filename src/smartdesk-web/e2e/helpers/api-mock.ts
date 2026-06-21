@@ -23,7 +23,7 @@ import {
   Comment,
   TicketStatus,
 } from '../fixtures/types';
-import { MOCK_RESPONSES, generateTestId, TEST_USERS } from '../fixtures/test-data';
+import { MOCK_RESPONSES, generateTestId, TEST_USERS, TestUser } from '../fixtures/test-data';
 
 // ═══════════════════════════════════════════════════════════
 // Mock 配置
@@ -146,15 +146,16 @@ export async function mockAuthRoutes(page: Page, config: MockConfig = mockConfig
     }
     
     // 设置当前用户
-    const userInfo = MOCK_RESPONSES.meResponse(user);
+    const userInfo = MOCK_RESPONSES.meResponse(user as TestUser);
     mockState.currentUser = userInfo;
     
     // 构建响应（包含 Set-Cookie header）
-    const response = buildCreatedResponse(MOCK_RESPONSES.loginSuccess(user));
+    const response = buildCreatedResponse(MOCK_RESPONSES.loginSuccess(user as TestUser));
     await route.fulfill({
-      ...response,
+      status: response.status,
+      contentType: response.contentType,
+      body: response.body,
       headers: {
-        ...response,
         'Set-Cookie': `sd_rt=mock-refresh-token-${user.username}; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth; Max-Age=604800`,
       },
     });
@@ -463,7 +464,7 @@ export async function initMockRoutes(
   // 设置当前用户
   if (user) {
     const userData = TEST_USERS[user];
-    mockState.currentUser = MOCK_RESPONSES.meResponse(userData);
+    mockState.currentUser = MOCK_RESPONSES.meResponse(userData as TestUser);
   }
   
   // 初始化所有路由
@@ -522,14 +523,12 @@ export function setMockConfig(config: Partial<MockConfig>) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// 导出所有内容
+// 导出所有内容（注意：buildSuccessResponse/buildCreatedResponse/buildErrorResponse
+// 已在上面定义并导出，此处不再重复导出以避免 TS2323/TS2484 错误）
 // ═══════════════════════════════════════════════════════════
 
 export {
   mockConfig,
   mockState,
   defaultConfig,
-  buildSuccessResponse,
-  buildCreatedResponse,
-  buildErrorResponse,
 };

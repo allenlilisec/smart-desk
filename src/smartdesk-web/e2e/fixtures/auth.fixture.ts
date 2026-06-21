@@ -29,7 +29,7 @@ type AuthFixture = {
   adminPage: Page;
   
   /** 登录工具函数 */
-  loginAs: (page: Page, user: keyof typeof TEST_USERS) => Promise<Page>;
+  loginAs: (page: Page, userKey: keyof typeof TEST_USERS) => Promise<{ token: string; user: Me }>;
   
   /** 获取认证信息 */
   getAuthInfo: (user: keyof typeof TEST_USERS) => Promise<{ token: string; user: Me }>;
@@ -194,7 +194,7 @@ export const test = base.extend<AuthFixture>({
    * 登录工具函数
    */
   loginAs: async ({}, use) => {
-    await use(async (page: Page, userKey: keyof typeof TEST_USERS) => {
+    await use(async (page: Page, userKey: keyof typeof TEST_USERS): Promise<{ token: string; user: Me }> => {
       return performLogin(page, userKey);
     });
   },

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Ticket } from '../../../e2e/fixtures/types';
+import { Ticket } from '@/types';
 
 const statusMap: Record<string, string> = {
   new: '新工单',

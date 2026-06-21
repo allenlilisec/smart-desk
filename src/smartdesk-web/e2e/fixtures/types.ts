@@ -123,6 +123,7 @@ export interface TicketAggregate extends Ticket {
     display_name: string;
     email?: string | null;
   };
+  requester_name?: string;
   comments_count?: number;
 }
 

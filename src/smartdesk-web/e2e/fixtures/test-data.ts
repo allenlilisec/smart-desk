@@ -21,7 +21,7 @@ export const TEST_USERS = {
     username: 'zhangsan',
     password: 'test123',
     displayName: '张三',
-    roles: ['requester'],
+    roles: ['requester'] as const,
   },
   
   /** 坐席 - 李四 */
@@ -30,7 +30,7 @@ export const TEST_USERS = {
     username: 'lisi',
     password: 'test123',
     displayName: '李四',
-    roles: ['agent'],
+    roles: ['agent'] as const,
   },
   
   /** 管理员 - admin */
@@ -39,9 +39,11 @@ export const TEST_USERS = {
     username: 'admin',
     password: 'admin123',
     displayName: '管理员',
-    roles: ['admin'],
+    roles: ['admin'] as const,
   },
 } as const;
+
+export type TestUser = typeof TEST_USERS[keyof typeof TEST_USERS];
 
 // ═══════════════════════════════════════════════════════════
 // 测试组织定义
@@ -108,7 +110,7 @@ export const MOCK_RESPONSES = {
   /**
    * 登录成功响应
    */
-  loginSuccess: (user: typeof TEST_USERS.zhangsan) => ({
+  loginSuccess: (user: TestUser) => ({
     access_token: `mock-access-token-${user.username}`,
     token_type: 'Bearer',
     expires_in: 3600,
@@ -117,11 +119,11 @@ export const MOCK_RESPONSES = {
   /**
    * 当前用户信息响应
    */
-  meResponse: (user: typeof TEST_USERS.zhangsan): Me => ({
+  meResponse: (user: TestUser): Me => ({
     user_id: user.id,
     username: user.username,
     display_name: user.displayName,
-    roles: user.roles,
+    roles: [...user.roles],
   }),
   
   /**
