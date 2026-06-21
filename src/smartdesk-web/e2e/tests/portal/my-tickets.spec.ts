@@ -271,13 +271,9 @@ test.describe('我的工单列表', () => {
     
     // 验证空列表状态
     const emptyState = page.locator('[data-testid="empty-state"], .empty-state, .no-data, .empty-message').first();
-    const emptyText = page.locator('text=暂无工单, text=没有工单, text=空空如也').first();
-    
-    const hasEmptyState = await emptyState.isVisible().catch(() => false);
-    const hasEmptyText = await emptyText.isVisible().catch(() => false);
-    
-    // 验证至少显示了列表容器或空状态
-    expect(hasEmptyState || hasEmptyText).toBeTruthy();
+    await expect(emptyState).toBeVisible({ timeout: 5000 });
+    const emptyText = await emptyState.textContent();
+    expect(emptyText).toMatch(/暂无工单|没有工单|空空如也/);
   });
   
   // ═══════════════════════════════════════════════════════

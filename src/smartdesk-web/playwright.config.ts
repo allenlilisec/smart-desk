@@ -17,7 +17,7 @@ const isMockMode = e2eMode === 'mock';
 
 // 根据模式设置 baseURL
 const baseURL = process.env.E2E_BASE_URL || (isMockMode 
-  ? 'http://localhost:3000'  // Mock 模式下本地开发服务器
+  ? 'http://localhost:3005'  // Mock 模式下本地开发服务器
   : 'http://localhost:3001'    // 真实 Gateway 模式下 Gateway 服务地址
 );
 

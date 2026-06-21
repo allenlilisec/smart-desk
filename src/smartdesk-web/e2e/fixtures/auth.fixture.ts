@@ -50,19 +50,24 @@ const authStorage = new Map<string, { token: string; user: Me }>();
 
 /**
  * Mock 模式登录 - 使用 localStorage 注入 token
+ *
+ * 先导航到应用页面再操作 localStorage，避免 about:blank 的 SecurityError。
  */
 async function mockLogin(page: Page, userKey: keyof typeof TEST_USERS): Promise<{ token: string; user: Me }> {
   const user = TEST_USERS[userKey];
   const tokenData = MOCK_RESPONSES.loginSuccess(user);
   const userInfo = MOCK_RESPONSES.meResponse(user);
-  
+
+  // 必须先离开 about:blank 才能访问 localStorage
+  await page.goto('/');
+
   // 注入 token 到 localStorage
   await page.evaluate(({ token, user }) => {
     localStorage.setItem('sd_access_token', token);
     localStorage.setItem('sd_user', JSON.stringify(user));
     localStorage.setItem('sd_token_expires', (Date.now() + 3600000).toString());
   }, { token: tokenData.access_token, user: userInfo });
-  
+
   return { token: tokenData.access_token, user: userInfo };
 }
 

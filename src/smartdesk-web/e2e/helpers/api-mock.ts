@@ -323,8 +323,8 @@ export async function mockCommentRoutes(page: Page, config: MockConfig = mockCon
   await page.route(/\/api\/v1\/tickets\/[^\/]+\/comments$/, async (route: Route) => {
     const request = route.request();
     const url = new URL(request.url());
-    const ticketId = url.pathname.split('/')[3]; // /api/v1/tickets/{id}/comments
-    
+    const ticketId = url.pathname.split('/')[4]; // /api/v1/tickets/{id}/comments
+
     if (request.method() === 'GET') {
       const comments = mockState.comments.get(ticketId) || [];
       
@@ -378,22 +378,22 @@ export async function mockTransitionRoutes(page: Page, config: MockConfig = mock
   
   await page.route(/\/api\/v1\/tickets\/[^\/]+\/transitions$/, async (route: Route) => {
     const request = route.request();
-    
+
     if (request.method() !== 'POST') {
       await route.continue();
       return;
     }
-    
+
     const url = new URL(request.url());
-    const ticketId = url.pathname.split('/')[3];
+    const ticketId = url.pathname.split('/')[4]; // /api/v1/tickets/{id}/transitions
     const body = await request.postDataJSON();
     const ticket = mockState.tickets.get(ticketId || '');
-    
+
     if (!ticket) {
       await route.fulfill(buildErrorResponse(404, 'Ticket not found'));
       return;
     }
-    
+
     // 验证状态跃迁（对齐 gateway.yaml TransitionRequest.action 枚举）
     const action = body?.action;
     const validActions: Record<TicketStatus, string[]> = {
@@ -435,7 +435,7 @@ export async function mockTransitionRoutes(page: Page, config: MockConfig = mock
       ...(newStatus === 'resolved' ? { resolved_at: new Date().toISOString() } : {}),
       ...(newStatus === 'closed' ? { closed_at: new Date().toISOString() } : {}),
     };
-    
+
     mockState.tickets.set(ticketId || '', updatedTicket);
     await route.fulfill(buildSuccessResponse(updatedTicket, delay));
   });
@@ -482,6 +482,25 @@ export function clearMockState() {
   mockState.tickets.clear();
   mockState.comments.clear();
   mockState.currentUser = null;
+}
+
+/**
+ * 向 Mock 状态注入工单（解决 page.evaluate 写到 window 无法同步到 Node 侧 route handler 的问题）
+ */
+export function seedMockTickets(tickets: Ticket[]) {
+  for (const ticket of tickets) {
+    mockState.tickets.set(ticket.id, ticket);
+    if (!mockState.comments.has(ticket.id)) {
+      mockState.comments.set(ticket.id, []);
+    }
+  }
+}
+
+/**
+ * 向 Mock 状态注入评论
+ */
+export function seedMockComments(ticketId: string, comments: Comment[]) {
+  mockState.comments.set(ticketId, comments);
 }
 
 /**
