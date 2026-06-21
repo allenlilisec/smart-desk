@@ -478,11 +478,16 @@ components:
 
     AssignmentRequest:
       type: object
-      required: [kind, to_user_id]
+      required: [kind]
+      description: >-
+        分派请求。`to_user_id` 为**条件必填**：`kind∈{manual,reassign}` 时必填（人工指定坐席）；
+        `kind∈{auto,escalate}` 时可省略，目标由路由引擎按 routing_rules 解析（auto=建单/重路由触发；
+        escalate=升级到上级组/组长）。无规则命中时落默认队列且工单保持全量工作台可见（fallback，见
+        specs/core/routing-engine-contract.md §4）。
       properties:
         kind: { type: string, enum: [manual, auto, reassign, escalate] }
-        to_user_id: { type: string, format: uuid }
-        to_group_id: { type: string, format: uuid, nullable: true }
+        to_user_id: { type: string, format: uuid, nullable: true, description: 'kind∈{manual,reassign} 必填；kind∈{auto,escalate} 省略则由引擎解析' }
+        to_group_id: { type: string, format: uuid, nullable: true, description: '可选；指定后引擎在该组内按策略选坐席（least-load→round-robin 回退）' }
         reason: { type: string }
     Assignment:
       allOf:
