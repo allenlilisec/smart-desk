@@ -19,12 +19,49 @@ export default function CreateTicket() {
   const [errors, setErrors] = useState<FormErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
 
   useEffect(() => {
     // 检查登录状态
-    const token = localStorage.getItem('auth_token')
-    if (!token) {
-      router.push('/portal/login')
+    const checkAuth = () => {
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        router.push('/portal/login')
+        return false
+      }
+      return true
+    }
+
+    // 立即检查一次
+    if (!checkAuth()) {
+      setIsCheckingAuth(false)
+      return
+    }
+    setIsCheckingAuth(false)
+
+    // 监听 storage 变化（用于 E2E 测试中动态设置登录状态）
+    const handleStorageChange = () => {
+      checkAuth()
+    }
+    window.addEventListener('storage', handleStorageChange)
+
+    // 定期检查登录状态（用于 E2E 测试）
+    const interval = setInterval(() => {
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        router.push('/portal/login')
+      }
+    }, 100)
+
+    // 3秒后停止定期检查
+    const timeout = setTimeout(() => {
+      clearInterval(interval)
+    }, 3000)
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      clearInterval(interval)
+      clearTimeout(timeout)
     }
   }, [router])
 
@@ -90,6 +127,14 @@ export default function CreateTicket() {
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div data-testid="create-ticket-loading" className="text-gray-600">Loading...</div>
+      </div>
+    )
   }
 
   return (

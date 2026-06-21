@@ -8,18 +8,53 @@ export default function PortalHome() {
   const router = useRouter()
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [userName, setUserName] = useState('')
+  const [isChecking, setIsChecking] = useState(true)
 
   useEffect(() => {
     // 检查登录状态
-    const token = localStorage.getItem('auth_token')
-    const name = localStorage.getItem('user_name')
-    if (!token) {
-      router.push('/portal/login')
+    const checkAuth = () => {
+      const token = localStorage.getItem('auth_token')
+      const name = localStorage.getItem('user_name')
+      if (!token) {
+        router.push('/portal/login')
+        return false
+      }
+      setIsLoggedIn(true)
+      setUserName(name || '用户')
+      setIsChecking(false)
+      return true
+    }
+
+    // 立即检查一次
+    if (!checkAuth()) {
+      setIsChecking(false)
       return
     }
-    setIsLoggedIn(true)
-    setUserName(name || '用户')
-  }, [router])
+
+    // 监听 storage 变化（用于 E2E 测试中动态设置登录状态）
+    const handleStorageChange = () => {
+      checkAuth()
+    }
+    window.addEventListener('storage', handleStorageChange)
+    
+    // 定期检查登录状态（用于 E2E 测试）
+    const interval = setInterval(() => {
+      if (!isLoggedIn) {
+        checkAuth()
+      }
+    }, 100)
+    
+    // 3秒后停止定期检查
+    const timeout = setTimeout(() => {
+      clearInterval(interval)
+    }, 3000)
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      clearInterval(interval)
+      clearTimeout(timeout)
+    }
+  }, [router, isLoggedIn])
 
   const handleLogout = () => {
     localStorage.removeItem('auth_token')
@@ -28,8 +63,8 @@ export default function PortalHome() {
     router.push('/portal/login')
   }
 
-  if (!isLoggedIn) {
-    return <div>Loading...</div>
+  if (isChecking || !isLoggedIn) {
+    return <div data-testid="portal-loading">Loading...</div>
   }
 
   return (

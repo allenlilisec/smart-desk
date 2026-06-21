@@ -80,9 +80,11 @@ export const test = base.extend<TestFixtures>({
         const displayName = USER_DISPLAY_NAMES[role];
 
         if (isMockMode) {
-          // Mock 模式：通过 init script 在页面加载前写入 localStorage
+          // Mock 模式：先访问页面，然后通过 evaluate 设置 localStorage
+          // 访问一个空白页面来设置 localStorage
+          await page.goto('/portal');
           const token = generateMockToken(user);
-          await page.addInitScript(
+          await page.evaluate(
             ({ token, role, displayName }) => {
               localStorage.setItem('auth_token', token);
               localStorage.setItem('user_role', role);
@@ -90,6 +92,8 @@ export const test = base.extend<TestFixtures>({
             },
             { token, role: user.role, displayName }
           );
+          // 刷新页面使登录状态生效
+          await page.reload();
           return;
         }
 
