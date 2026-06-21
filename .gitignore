@@ -8,3 +8,8 @@ __pycache__/
 deploy/staging/
 deploy/alpha/.env
 deploy/alpha/keys/
+
+# web frontend
+dist/
+*.tsbuildinfo
+src/smartdesk-web/.env.local

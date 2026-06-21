@@ -85,7 +85,7 @@ export default function EditRoutingRulePage() {
     }
   }, [ruleId]);
 
-  const handleInputChange = (field: keyof RoutingRuleUpdate, value: any) => {
+  const handleInputChange = (field: keyof RoutingRuleUpdate, value: string | number | boolean | null) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     setErrors((prev) => prev.filter((e) => e.field !== field));
   };
@@ -111,7 +111,8 @@ export default function EditRoutingRulePage() {
     router.push("/admin/routing-rules");
   };
 
-  const getErrorMessage = (field: string) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _getErrorMessage = (field: string) => {
     const error = errors.find((e) => e.field === field);
     return error?.message;
   };

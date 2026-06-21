@@ -53,7 +53,7 @@ export default function CreateRoutingRulePage() {
     active: true,              // 默认
   });
 
-  const handleInputChange = (field: keyof RoutingRuleCreate, value: any) => {
+  const handleInputChange = (field: keyof RoutingRuleCreate, value: string | number | boolean | null) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     // 清除对应字段的错误
     setErrors((prev) => prev.filter((e) => e.field !== field));
