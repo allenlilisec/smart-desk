@@ -816,7 +816,7 @@ components:
       type: object
       properties:
         id: { type: string, format: uuid }
-        org_id: { type: string }
+        org_id: { type: string, format: uuid }
         code: { type: string }
         name: { type: string }
         active: { type: boolean }
@@ -862,7 +862,7 @@ components:
         strategy 字段控制组内选坐席策略。
       properties:
         id: { type: string, format: uuid }
-        org_id: { type: string }
+        org_id: { type: string, format: uuid }
         name: { type: string }
         match_category_id: { type: string, format: uuid, nullable: true }
         match_keyword: { type: string, nullable: true, description: 关键词匹配（预留） }
