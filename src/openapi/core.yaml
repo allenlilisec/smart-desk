@@ -25,6 +25,7 @@ tags:
   - name: sla
   - name: timeline
   - name: config
+  - name: routing-rules
 
 security:
   - serviceAuth: []
@@ -337,6 +338,110 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
+
+  /config/groups:
+    get:
+      tags: [config]
+      summary: 坐席组/技能组列表（SUP-473）
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Group' } } } } }
+    post:
+      tags: [config]
+      summary: 创建坐席组（admin）
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/GroupCreate' } } } }
+      responses:
+        '201': { description: 已创建, content: { application/json: { schema: { $ref: '#/components/schemas/Group' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /config/groups/{groupId}:
+    parameters: [{ name: groupId, in: path, required: true, schema: { type: string, format: uuid } }]
+    patch:
+      tags: [config]
+      summary: 修改坐席组（admin）
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/GroupUpdate' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Group' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [config]
+      summary: 删除坐席组（软删，admin）
+      responses:
+        '204': { description: OK }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /config/groups/{groupId}/members:
+    parameters: [{ name: groupId, in: path, required: true, schema: { type: string, format: uuid } }]
+    get:
+      tags: [config]
+      summary: 坐席组成员列表
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/GroupMember' } } } } }
+    post:
+      tags: [config]
+      summary: 添加组成员（admin）
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/GroupMemberCreate' } } } }
+      responses:
+        '201': { description: 已添加, content: { application/json: { schema: { $ref: '#/components/schemas/GroupMember' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /config/routing-rules:
+    get:
+      tags: [routing-rules]
+      summary: 路由规则列表（SUP-473，分页/筛选）
+      parameters:
+        - { name: active, in: query, schema: { type: boolean } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/RoutingRulePage' } } } }
+    post:
+      tags: [routing-rules]
+      summary: 创建路由规则（admin）
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RoutingRuleCreate' } } } }
+      responses:
+        '201': { description: 已创建, content: { application/json: { schema: { $ref: '#/components/schemas/RoutingRule' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { description: CHECK约束冲突（sort唯一、strategy值域、match_priority值域）, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /config/routing-rules/{ruleId}:
+    parameters: [{ name: ruleId, in: path, required: true, schema: { type: string, format: uuid } }]
+    get:
+      tags: [routing-rules]
+      summary: 路由规则详情
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/RoutingRule' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [routing-rules]
+      summary: 更新路由规则（admin）
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RoutingRuleUpdate' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/RoutingRule' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { description: CHECK约束冲突, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    delete:
+      tags: [routing-rules]
+      summary: 删除路由规则（软删，admin）
+      responses:
+        '204': { description: OK }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /config/routing-rules/reorder:
+    post:
+      tags: [routing-rules]
+      summary: 批量调整规则顺序（admin，事务内原子重排）
+      description: >
+        单事务内原子重排 sort 值，避免中间态撞唯一约束 `idx_routing_rules_org_sort_unique`。
+        前端只提交目标顺序，冲突由后端事务消解。
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RoutingRuleReorder' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/RoutingRule' } } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { description: 事务冲突或无效排序, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
 
   /healthz:
     get:
@@ -674,3 +779,131 @@ components:
         page: { type: integer }
         page_size: { type: integer }
         total: { type: integer }
+
+    AssignmentStrategy:
+      type: string
+      enum: [least_load, round_robin]
+      description: 组内选坐席策略（SUP-473）
+
+    RoutingRule:
+      type: object
+      description: 路由规则配置（SUP-473，对齐 DDL 0007_routing_rules.sql）
+      properties:
+        id: { type: string, format: uuid }
+        org_id: { type: string, description: 多租户隔离 }
+        name: { type: string, maxLength: 255 }
+        match_category_id: { type: string, format: uuid, nullable: true, description: 分类匹配，NULL=通配 }
+        match_keyword: { type: string, nullable: true, description: 关键词匹配（预留） }
+        match_source: { type: string, nullable: true, description: 来源匹配（预留） }
+        match_priority: { type: string, nullable: true, description: 工单优先级匹配 P1-P4 }
+        match_group_id: { type: string, format: uuid, nullable: true, description: 技能组匹配 }
+        to_group_id: { type: string, format: uuid, description: 分派目标组（必填） }
+        target_user_id: { type: string, format: uuid, nullable: true, description: 可选直派到坐席 }
+        strategy: { $ref: '#/components/schemas/AssignmentStrategy' }
+        sort: { type: integer, description: 规则求值顺序（越小越优先） }
+        active: { type: boolean, description: 规则启停 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    RoutingRuleCreate:
+      type: object
+      required: [name, to_group_id, strategy, sort, active]
+      properties:
+        name: { type: string, maxLength: 255 }
+        match_category_id: { type: string, format: uuid, nullable: true }
+        match_keyword: { type: string, nullable: true }
+        match_source: { type: string, nullable: true }
+        match_priority: { type: string, nullable: true }
+        match_group_id: { type: string, format: uuid, nullable: true }
+        to_group_id: { type: string, format: uuid }
+        target_user_id: { type: string, format: uuid, nullable: true }
+        strategy: { $ref: '#/components/schemas/AssignmentStrategy' }
+        sort: { type: integer }
+        active: { type: boolean, default: true }
+
+    RoutingRuleUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        match_category_id: { type: string, format: uuid, nullable: true }
+        match_keyword: { type: string, nullable: true }
+        match_source: { type: string, nullable: true }
+        match_priority: { type: string, nullable: true }
+        match_group_id: { type: string, format: uuid, nullable: true }
+        to_group_id: { type: string, format: uuid }
+        target_user_id: { type: string, format: uuid, nullable: true }
+        strategy: { $ref: '#/components/schemas/AssignmentStrategy' }
+        sort: { type: integer }
+        active: { type: boolean }
+
+    RoutingRulePage:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/RoutingRule' } }
+        page: { type: integer }
+        page_size: { type: integer }
+        total: { type: integer }
+
+    RoutingRuleReorder:
+      type: object
+      description: 批量调整规则顺序（SUP-473）
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [id, sort]
+            properties:
+              id: { type: string, format: uuid }
+              sort: { type: integer }
+
+    Group:
+      type: object
+      description: 坐席组/技能组（SUP-473）
+      properties:
+        id: { type: string, format: uuid }
+        org_id: { type: string }
+        code: { type: string }
+        name: { type: string }
+        active: { type: boolean }
+        sort: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    GroupCreate:
+      type: object
+      required: [code, name]
+      properties:
+        code: { type: string }
+        name: { type: string }
+        active: { type: boolean, default: true }
+        sort: { type: integer, default: 0 }
+
+    GroupUpdate:
+      type: object
+      properties:
+        code: { type: string }
+        name: { type: string }
+        active: { type: boolean }
+        sort: { type: integer }
+
+    GroupMember:
+      type: object
+      description: 坐席组成员（SUP-473）
+      properties:
+        id: { type: string, format: uuid }
+        org_id: { type: string }
+        group_id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        skills_tags: { type: array, items: { type: string }, description: 技能标签（预留） }
+        active: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    GroupMemberCreate:
+      type: object
+      required: [user_id]
+      properties:
+        user_id: { type: string, format: uuid }
+        skills_tags: { type: array, items: { type: string } }
+        active: { type: boolean, default: true }
