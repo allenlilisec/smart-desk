@@ -225,7 +225,7 @@ services:
   web:
     <<: *service-common
     container_name: alpha-web
-    image: ${WEB_IMAGE:-allenlilisec/smartdesk-web:latest}
+    image: ${WEB_IMAGE:-ghcr.io/allenlilisec/smartdesk-web:latest}
     depends_on:
       gateway:
         condition: service_healthy
@@ -234,6 +234,8 @@ services:
       SERVICE: web
       VERSION: alpha
       PORT: "3000"
+      NEXT_PUBLIC_USE_MOCK: "false"
+      NEXT_PUBLIC_API_BASE_URL: "/api/v1"
       API_BASE_URL: "http://gateway:3000"
     ports:
       - "${WEB_PORT:-3002}:3000"
