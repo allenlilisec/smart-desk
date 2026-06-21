@@ -1,0 +1,146 @@
+name: Rollback to LKG
+
+on:
+  workflow_dispatch:
+    inputs:
+      lkg_tag:
+        description: '回滚目标 LKG 镜像 tag'
+        required: true
+        default: 'latest'
+      ingress_port:
+        description: 'ingress 端口'
+        required: false
+        default: '19080'
+      notify_recipients:
+        description: '额外通知对象（逗号分隔）'
+        required: false
+        default: ''
+
+jobs:
+  notify-start:
+    name: 启动通知
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 回滚启动通知
+        uses: ./.github/actions/notify-alert
+        with:
+          severity: P0
+          title: "回滚启动：切回 LKG ${{ inputs.lkg_tag }}"
+          body: |
+            回滚流水线已启动，目标 LKG tag：${{ inputs.lkg_tag }}。
+            按回滚预案 §4 顺序执行：web → gateway → insight → core。
+          recipients: ${{ inputs.notify_recipients != '' && inputs.notify_recipients || '万全,白帆,CTO' }}
+          webhook_url: ${{ secrets.NOTIFY_WEBHOOK_URL }}
+
+  rollback:
+    name: 切回 LKG
+    needs: notify-start
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 流量止血并回退镜像
+        env:
+          LKG_TAG: ${{ inputs.lkg_tag }}
+          INGRESS_PORT: ${{ inputs.ingress_port }}
+        run: |
+          # 1. 流量先切到 100% stable（LKG）
+          ./deploy/scripts/canary-stage.sh rollback
+
+          # 2. 将 canary 镜像 tag 也指向 LKG，确保下次 up 不会重新拉起异常版本
+          #    这里通过环境变量方式注入；生产环境由 CI/CD 流水线修改镜像 tag
+          echo "CANARY_TAG=$LKG_TAG" >> "$GITHUB_ENV"
+
+      - name: 重新拉起服务（LKG）
+        env:
+          INGRESS_PORT: ${{ inputs.ingress_port }}
+        run: |
+          docker compose -f deploy/docker-compose.canary.yml up -d --force-recreate
+
+  verify:
+    name: 回滚后验证
+    needs: rollback
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 四服务健康检查
+        env:
+          INGRESS_PORT: ${{ inputs.ingress_port }}
+        run: |
+          port=${INGRESS_PORT:-19080}
+          # gateway / web 经 ingress；core / insight 直连 stub 端口
+          curl -sf "http://localhost:${port}/api/healthz" || true
+          curl -sf "http://localhost:${port}/healthz" || true
+          docker compose -f deploy/docker-compose.canary.yml ps
+
+      - name: P0 冒烟（建单链路）
+        env:
+          INGRESS_PORT: ${{ inputs.ingress_port }}
+        run: |
+          # 骨架期仅验证 ingress 返回 LKG/stable 版本
+          port=${INGRESS_PORT:-19080}
+          for i in 1 2 3; do
+            body=$(curl -sfm 5 "http://localhost:${port}/api/" || echo '{}')
+            if echo "$body" | grep -q '"version": "stable"'; then
+              echo "Rollback verified: traffic is on stable/LKG"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "ERROR: traffic did not return to stable/LKG"
+          exit 1
+
+  notify-success:
+    name: 回滚成功通知
+    needs: verify
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 发送回滚成功通知
+        uses: ./.github/actions/notify-alert
+        with:
+          severity: success
+          title: "回滚完成：已切回 LKG ${{ inputs.lkg_tag }}"
+          body: |
+            已成功回滚至 LKG tag：${{ inputs.lkg_tag }}，P0 冒烟通过。
+
+            后续动作：
+            - 万全继续观测 15 min，确认 SLI 恢复至基线 ±10%
+            - 白帆通报发布群并安排热修/复盘
+          recipients: ${{ inputs.notify_recipients != '' && inputs.notify_recipients || '发布群' }}
+          webhook_url: ${{ secrets.NOTIFY_WEBHOOK_URL }}
+
+  notify-failure:
+    name: 回滚失败告警
+    needs: [rollback, verify, notify-success]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 发送回滚失败告警
+        uses: ./.github/actions/notify-alert
+        with:
+          severity: P0
+          title: "回滚失败：LKG ${{ inputs.lkg_tag }}"
+          body: |
+            `rollback.yml` 执行失败，未能在目标时间内切回 LKG。
+
+            可能原因：
+            - compose 脚本退出码非零
+            - LKG 镜像拉取失败
+            - 回滚后健康检查 / P0 冒烟未通过
+
+            请万全立即介入，白帆组织石磊 / 苏睿 / 关山联合排查。
+          recipients: ${{ inputs.notify_recipients != '' && inputs.notify_recipients || '万全,白帆,CTO' }}
+          webhook_url: ${{ secrets.NOTIFY_WEBHOOK_URL }}

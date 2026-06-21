@@ -1,6 +1,6 @@
 # SmartDesk 智能服务平台 — 系统详细设计与实现说明书
 
-> **唯一事实源（系统级详细设计）。** 版本：v1.0（已冻结，2026-06-14）　|　日期：2026-06-14
+> **唯一事实源（系统级详细设计）。** 版本：v1.1.0（2026-06-17 按 core MVP 事实源修订）　|　原冻结：v1.0（2026-06-14）
 > 编制：秦诺（契约设计 / 文档主笔）　|　架构拍板与最终裁决：梁栋（首席架构 / 架构设计团队 Leader）
 > 方法论：[github/spec-kit](https://github.com/github/spec-kit)　Constitution → Specify → Clarify → Plan（本文为 `/plan` 产物的人类可读整理；生成轨迹见 [`.specify/`](../.specify/) 与 [`specs/001-smartdesk-system/`](001-smartdesk-system/)）。
 >
@@ -9,7 +9,9 @@
 >
 > **生成方式纠偏**：本文为**自顶向下**系统级详设（先系统、后模块）。既有 [`gateway子系统详细设计与实现说明书.md`](gateway子系统详细设计与实现说明书.md) 为**自下而上**产物，**不得**作为系统详设；其内容将在 P2 由本文向下派生时对齐回填，不在本文范围。
 >
-> **冻结状态**：v1.0 已于 2026-06-14 由梁栋确认冻结（资料团队评审 + @CEO 报备已完成）。
+> **修订状态**：v1.0 已于 2026-06-14 冻结。本次 v1.1.0 仅按 core 模块 MVP 落地事实刷新 §4/§6/§10/§12（D-2~D-5 架构漂移裁决），不改动 gateway/insight 已冻结契约决策 D1–D5。
+>
+> **2026-06-17 修订**：按 [SUP-256](mention://issue/6dc94180-4236-4a26-83f3-aa8770cb73ed) D-1/D-2 裁决，将 core/insight 身份来源由旧 `X-User-* / X-Org-Id` 明文透传头统一刷新为 **service-jwt claims**（`sub`/`roles`/`org_id`），与 `src/openapi/core.yaml` v1.1.0 及 `src/smartdesk-core/internal/httpapi/auth.go` 实现一致。未改变服务边界、数据模型、事件语义。
 
 ## 0. 文档关系与事实源层级（解 SUP-43 文档冲突）
 
@@ -76,7 +78,7 @@
         │  · 路由聚合（为前端拼装 core+insight 视图）、限流(429)、审计  │
         │  · 身份提供方可插拔（一期 Local；预留 OIDC）                 │
         └──────┬──────────────────────────────────────┬─────────────┘
-        内部调用：mTLS + service-jwt（claims 携带 sub/roles/org_id）
+        内部调用：mTLS + service-jwt（claims 承载最终用户身份）
                ▼                                        ▼
    ┌───────────────────────────┐         ┌──────────────────────────────┐
    │ smartdesk-core (Go)        │         │ smartdesk-insight (Py/FastAPI)│
@@ -141,9 +143,15 @@
 > **多租户预留（OQ-7）**：所有业务表含 `org_id`，索引/外键带 `org_id`；一期不实现跨组织隔离，二期可在仓储/查询层加租户过滤而不改表结构。
 
 ### 4.2 核心实体（摘要）
-- **core OLTP**：users / roles / user_roles、categories、sla_policies / sla_policy_targets、tickets、ticket_status_history、ticket_timeline、assignments、comments、attachments、ticket_links、sla_timers、watchers、csat_ratings、processed_events。
-- **insight 读模型**：classification_feedback、similarity_index、notifications、notification_policies、stats_*、processed_events。
-- 字段、约束、ER 关系详见 data-model.md §A/§B/§D。
+
+> **MVP 事实源口径**：当前 core 实现已按 `0001_init.sql` 压缩基线落地部分表；目标态完整拆分表随后续 gap 任务以独立 migration 补齐（D-5 裁决，见 §13）。
+
+| 归属 | 当前 MVP 已落地 | 已预留 / 尚未落地（目标态） |
+|---|---|---|
+| **core OLTP** | `tickets`、`ticket_timeline`、`assignments`、`comments`、`attachments`、`sla_policies`、`sla_timers`、`categories`、`processed_events` | `users`/`roles`/`user_roles`（身份收口在 gateway，core 仅按需反查）、`sla_policy_targets`、`ticket_status_history`（独立历史表，当前状态变更写入 `ticket_timeline`）、`watchers`、`csat_ratings`、`ticket_links`、`idempotency_keys`（当前简化字段在 `tickets`/`comments`，未独立成表） |
+| **insight 读模型** | — | `classification_feedback`、`similarity_index`、`notifications`、`notification_policies`、`stats_*`、`processed_events` |
+
+- 字段、约束、ER 关系详见 `data-model.md` §A/§B/§D；目标态未落地表以 **预留** 标注，避免读者按完整 schema 施工。
 
 ### 4.3 工单状态机（OQ-8）
 
@@ -172,7 +180,7 @@ in_progress ─suspend→ suspended ─resume→ in_progress ；任意非终态 
 | 取消 | `cancelled` |
 
 - 终态：`closed`、`cancelled`。`pending_user` 超时 v1 仅提醒（3 天/7 天），**不自动关闭**。
-- 非法跃迁 **409 拒绝**；状态变更幂等（`Idempotency-Key`）；每次写 `ticket_timeline` + `ticket_status_history`。
+- 非法跃迁 **409 拒绝**；状态变更幂等（`Idempotency-Key`，当前简化实现未独立持久化 key）；当前写入 `ticket_timeline`，`ticket_status_history` 独立表为预留。
 
 ---
 
@@ -197,7 +205,7 @@ in_progress ─suspend→ suspended ─resume→ in_progress ；任意非终态 
 - 分页：`page`/`page_size`（或 `cursor`），响应 `{items, page, page_size, total}`。
 - 幂等：写操作支持 `Idempotency-Key`（状态流转/分派/通知幂等）。
 - 时间 RFC3339 UTC；时长用整数（分钟/秒）避免浮点。
-- 安全：gateway 对外 `bearerAuth`(用户 JWT)；core/insight `serviceAuth`(服务令牌，claims 携带 sub/roles/org_id)。
+- 安全：gateway 对外 `bearerAuth`(用户 JWT)；core/insight `serviceAuth`(服务令牌)，最终用户身份由 service-jwt claims（`sub`/`roles`/`org_id`）承载，不再依赖 `X-User-*` 明文透传头。
 
 > **契约变更治理**：新增/修改/删除字段或路径须经梁栋批准；秦诺以 `api-contract-check` 校验实现与契约一致、把守共享 schema（Error/分页/事件）与版本。**§5.1 的 gateway↔core 对齐项已由 §13 D1/D5 裁定并落地（csat 已补、suggestion 用字段语义闭合）。**
 
@@ -205,8 +213,10 @@ in_progress ─suspend→ suspended ─resume→ in_progress ；任意非终态 
 
 ## 6. 领域事件模型与事件总线
 
-### 6.1 选型：NATS JetStream（异步消息队列）
-**结论：采用消息队列（异步），选 NATS JetStream。** 满足"AI 异步写回不阻塞主流程""通知至少一次+消费幂等"；三语 SDK 齐全；单机可运行契合本组织并行上限。RabbitMQ 为等价备选——**事件 schema 与总线实现解耦**，切换不影响契约。同步调用被否（AI 故障会阻塞建单，违反红线）。
+### 6.1 选型：NATS JetStream（目标架构）/ in-memory best-effort（当前 MVP）
+**目标结论：采用消息队列（异步），选 NATS JetStream。** 满足"AI 异步写回不阻塞主流程""通知至少一次+消费幂等"；三语 SDK 齐全；单机可运行契合本组织并行上限。RabbitMQ 为等价备选——**事件 schema 与总线实现解耦**，切换不影响契约。同步调用被否（AI 故障会阻塞建单，违反红线）。
+
+> **MVP 事实源（D-3 裁决）**：当前 core 实现为 `internal/event` **in-memory best-effort** 发布，无事务性 outbox / NATS relay；insight 通过同步 HTTP/同进程消费或内存事件接收。生产前必须升级为事务性 outbox + NATS JetStream relay，由 [SUP-296](mention://issue/c8498d4e-a331-4a39-8e43-f9944149b12c) backlog 跟踪。
 
 ### 6.2 事件信封（统一 schema，US-4.1 AC2）
 ```jsonc
@@ -241,13 +251,14 @@ in_progress ─suspend→ suspended ─resume→ in_progress ；任意非终态 
 ```
 浏览器 ──JWT(Bearer)──▶ gateway ──校验 JWT + RBAC──▶ 通过
 gateway ──内部调用──▶ core/insight    （mTLS 双向证书通道）
-  头：Authorization: Bearer <service-jwt>            // iss=gateway, aud=core|insight, sub=svc, 短时
-                                                   // claims 携带最终用户 sub/roles/org_id
-      X-Request-Id                                   // 仅链路追踪
-core/insight ──▶ 只信任 gateway 的 service-jwt（校验签名+aud/claims）；用已验签 claims 做领域级数据过滤
+  头：Authorization: Bearer <service-jwt>
+      // service-jwt claims: sub=最终用户ID, roles=[requester|agent|...], org_id=组织ID
+      // iss=gateway, aud=core|insight, 短时
+      X-Request-Id  // 链路追踪（可选）
+core/insight ──▶ 只信任 gateway 的 service-jwt（校验签名+aud+iss）；最终用户身份仅来自已验签 claims
 ```
 - 后端仅监听内网，未经 gateway 的直达请求在网络层/令牌校验被拒（US-1.3 AC1）。
-- 鉴权已在 gateway 收口，后端**不二次鉴权用户身份**，但用 service-jwt 已验签 claims（sub/roles/org_id）做领域级过滤（内部备注过滤、本组工单范围）——最小权限的纵深防御。
+- 鉴权已在 gateway 收口，后端**不二次鉴权用户身份**，但用 service-jwt claims 中的 `roles`/`org_id` 做领域级过滤（内部备注过滤、本组工单范围）——最小权限的纵深防御。
 - `X-Request-Id`/`trace_id` 全链路透传，落日志与时间线。
 
 ---
@@ -294,7 +305,7 @@ core/insight ──▶ 只信任 gateway 的 service-jwt（校验签名+aud/clai
 | 可靠性：幂等/至少一次/可审计 | 写操作 Idempotency-Key；事件至少一次+消费幂等；时间线仅追加审计 |
 | 合规预留（OQ-10） | 软删除 + 审计不可篡改 + admin 导出/删除接口预留；留存期/法务判定 M4 GA 前由人类/法务确认（不阻塞 M1/M2） |
 
-**可观测性三支柱**：结构化 JSON 日志（统一 `trace_id/request_id/org_id/actor_id`，审计独立不可篡改）；`/metrics`(Prometheus，关键指标 SLA 计时准确性、P95/P99、事件消费 lag、分类采纳率)；OpenTelemetry 全链路 trace；`/healthz`(liveness) + `/readyz`(readiness；gateway/insight 含 DB/总线依赖，core 不强制探测 DB/NATS)。
+**可观测性三支柱**：结构化 JSON 日志（统一 `trace_id/request_id/org_id/actor_id`，审计独立不可篡改）；`/metrics`(Prometheus，关键指标 SLA 计时准确性、P95/P99、事件消费 lag、分类采纳率)；OpenTelemetry 全链路 trace；`/healthz`(liveness，进程存活即 200) + `/readyz`(readiness，core 服务本身可接收流量即 200，**不强制**探测 DB/NATS；依赖健康由独立基础设施探针或告警处理)（D-4 裁决）。
 
 ---
 
@@ -322,8 +333,8 @@ core/insight ──▶ 只信任 gateway 的 service-jwt（校验签名+aud/clai
 > 本系统详设冻结后，P2 由各模块 Leader **自顶向下**派生模块详设（`specs/<模块名>子系统详细设计与实现说明书.md`）；P3 `/tasks` 拆任务、P4 `/implement`。下表为系统级模块清单与跨服务里程碑，供 P2 解阻塞路由。
 
 ### 12.1 模块清单（按服务/团队）
-- **gateway**（前端团队·关山主写；认证/RBAC 加后端+安全双评审）：GW-1 认证（JWT/会话/IdP 抽象）、GW-2 RBAC（矩阵/403/审计）、GW-3 聚合 BFF、GW-4 限流防护、GW-5 服务令牌+mTLS+service-jwt claims 身份。
-- **core**（后端团队·石磊骨架/集成；陈川=模块A，连城=模块B）：CORE-0 骨架（schema/迁移/事件客户端/健康检查、**含 `insight.classification_suggested` 写回消费子能力**）、CORE-A1 状态机（**含 watchers/csat 端点实现**）、CORE-A2 分派/升级、CORE-A3 SLA 引擎、CORE-B1 评论/备注+@提及、CORE-B2 附件+OSS、CORE-B3 查询/列表/时间线、CORE-B4 关联/合并、CORE-C 配置（taxonomy/SLA/用户角色）。跨模块集成与 `api-contract-check` CI 为石磊**跨切职责**，不另立 CORE-ID（O1）。
+- **gateway**（前端团队·关山主写；认证/RBAC 加后端+安全双评审）：GW-1 认证（JWT/会话/IdP 抽象）、GW-2 RBAC（矩阵/403/审计）、GW-3 聚合 BFF、GW-4 限流防护、GW-5 服务令牌+mTLS+透传头。
+- **core**（后端团队·石磊骨架/集成；陈川=模块A，连城=模块B）：当前 MVP 已实现 `httpapi/domain/store` 轻量分层，落地 CORE-0 骨架（schema/迁移/内存事件/健康检查）、CORE-A1 状态机（八态流转/非法跃迁 409/7 天重开）、CORE-A2 分派/改派、CORE-A3 SLA 引擎（启动/暂停/恢复/查询）、CORE-B1 评论/备注可见性、CORE-B2 附件元数据/上传下载 URL/校验、CORE-B3 查询/列表/时间线/搜索过滤、CORE-C 配置（taxonomy/SLA）。**当前仍为 gap/技术债**：`insight.classification_suggested` 写回消费、watchers/csat 端点、关联/合并（CORE-B4）、独立 `ticket_status_history`/`idempotency_keys` 表、事务性 outbox + NATS relay、六边形/sqlc/oapi-codegen 分层，由 [SUP-296](mention://issue/c8498d4e-a331-4a39-8e43-f9944149b12c)/[SUP-298](mention://issue/c7b6eec2-990f-4491-ad9b-33cb47ac8151) 跟踪。跨模块集成与 `api-contract-check` CI 为石磊**跨切职责**，不另立 CORE-ID（O1）。
 - **insight**（智能服务团队·苏睿算法；杨达通知/集成）：INS-1 事件消费骨架、INS-2 自动分类+纠偏回流、INS-3 定级建议、INS-4 相似检索、INS-5 统计聚合+看板查询、INS-6 通知（站内+邮件）、INS-7 通知策略。
 - **web**（前端团队·江颜主写）：WEB-1 报单门户、WEB-2 坐席工作台、WEB-3 管理后台、WEB-4 看板报表、WEB-5 i18n 预留。
 
@@ -341,16 +352,18 @@ core/insight ──▶ 只信任 gateway 的 service-jwt（校验签名+aud/clai
 
 ---
 
-## 13. 契约决策 D1–D5（已裁定）
+## 13. 契约决策 D1–D5 / 架构漂移 D-2~D-5（已裁定）
 
 > 梁栋于 2026-06-14 评审通过本详设草稿并逐条裁定 D1–D5（**契约决策最终裁定**）。已据此更新 `src/openapi/*.yaml` 并通过契约一致性校验（实质改动仅 D5 的 gateway `csat`；D1/D2/D3/D4 为语义固化与附录补充）。
+>
+> **core 模块架构漂移 D-2~D-5 已于 2026-06-17 由梁栋终裁**：当前 `httpapi/domain/store` 轻量 MVP 为 core 新事实源；原六边形/sqlc/oapi-codegen 分层、outbox/NATS JetStream relay、`/readyz` 强制探测 DB/NATS、完整 0001–0005 schema 拆分均降级为长期技术债或后续独立 migration 补齐（详见 §4/§6/§10/§12）。
 
 | # | 决策点 | 裁定 | 依据 / 落地 |
 |---|---|---|---|
 | D1 | `insight.classification_suggested` **写回落地** | **B：纯事件，不新增 core 同步写回端点** | core 已把建议建模为工单详情字段 `Ticket.suggestion: ClassificationSuggestion`；三路径分清见 §6.3（AI 写回=异步事件、读=core 工单详情字段、人工采纳/纠偏=gateway POST 同步）。守"AI 异步写回不阻塞主流程"红线，契约面最小。**契约面无新增 core 端点，缺口语义闭合。** |
 | D2 | gateway 详情**聚合边界** | **A：合工单主体 + 相似/建议懒加载** | gateway 合并工单主体，相似/建议走独立懒加载端点 `/similar`、`/suggestion`（符合 US-3.3 AC3，避免 N+1 与主加载阻塞）。维持现状契约，无需改。 |
 | D3 | 事件**分区键/顺序** | **写入契约附录** | 按 `ticket_id` 一致性哈希分区、单工单按 `occurred_at` 保序；跨工单不保证全局序，消费侧仍须 `event_id` 幂等。已固化进 `insight.yaml#/components/schemas/DomainEvent` 描述 + §6.3。 |
-| D4 | `org_id` 进**对外契约** | **A：不暴露** | 对外契约不出现 `org_id`，gateway 从 JWT 提取、服务间由 service-jwt claims 承载（OQ-7 一期单组织）。二期多租户再评估，届时升 `v2` 并行，不破坏一期契约。 |
+| D4 | `org_id` 进**对外契约** | **A：不暴露** | 对外契约不出现 `org_id`，gateway 从 JWT 注入、服务间用 `X-Org-Id` 透传（OQ-7 一期单组织）。二期多租户再评估，届时升 `v2` 并行，不破坏一期契约。 |
 | D5 | `csat`/`watchers`/`links` **对外一致性** | **分级** | **csat 一期对外补齐**：gateway 新增 `GET/POST /tickets/{id}/csat`，POST 映射 core 已有 `POST /tickets/{id}/csat`、GET 读取来源=core 工单详情 csat 字段（不另开 core GET）；`CsatCreate` 字段与 core 对齐。**watchers/links 暂不对外**：关联/合并（CORE-B4）与 watchers（绑 INS-6 通知 UX）属 M3，避免"端点已开、后端能力未到"的契约虚挂，待 M3 ready 时按契约变更治理（梁栋审批）再透出。 |
 
 **本次契约改动（已提交本 PR）**：

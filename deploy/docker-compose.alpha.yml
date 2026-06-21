@@ -23,13 +23,13 @@ x-core-env: &core-env
   CORE_SERVICE_JWT_PUBLIC_KEY_FILE: "${CORE_SERVICE_JWT_PUBLIC_KEY_FILE:-}"
   CORE_SERVICE_JWT_AUDIENCE: "${CORE_SERVICE_JWT_AUDIENCE:-core}"
   CORE_SERVICE_JWT_ISSUER: "${CORE_SERVICE_JWT_ISSUER:-smartdesk-gateway}"
-  CORE_NATS_URL: "tls://core:${NATS_CORE_PASSWORD:-changeme-core}@nats:4222"
+  CORE_NATS_URL: "tls://core:${NATS_CORE_PASSWORD:?set NATS_CORE_PASSWORD}@nats:4222"
   CORE_NATS_CA_FILE: "/etc/nats/certs/ca.crt"
   CORE_NATS_STREAM: "SMARTDESK_EVENTS"
 
 x-nats-env: &nats-env
-  NATS_CORE_PASSWORD: "${NATS_CORE_PASSWORD:-changeme-core}"
-  NATS_INSIGHT_PASSWORD: "${NATS_INSIGHT_PASSWORD:-changeme-insight}"
+  NATS_CORE_PASSWORD: "${NATS_CORE_PASSWORD:?set NATS_CORE_PASSWORD}"
+  NATS_INSIGHT_PASSWORD: "${NATS_INSIGHT_PASSWORD:?set NATS_INSIGHT_PASSWORD}"
 
 services:
   # ── 共享依赖 ──────────────────────────────────────────────
@@ -163,7 +163,7 @@ services:
       VERSION: alpha
       PORT: "8000"
       DATABASE_URL: "postgresql+asyncpg://smartdesk:smartdesk@postgres:5432/smartdesk"
-      NATS_URL: "tls://insight:${NATS_INSIGHT_PASSWORD:-changeme-insight}@nats:4222"
+      NATS_URL: "tls://insight:${NATS_INSIGHT_PASSWORD:?set NATS_INSIGHT_PASSWORD}@nats:4222"
       NATS_CA_FILE: "/etc/nats/certs/ca.crt"
       CORE_SERVICE_URL: "${CORE_SERVICE_URL:-http://core:8080}"
       CORE_SERVICE_TOKEN: "${CORE_SERVICE_TOKEN:-}"

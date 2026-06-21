@@ -3,7 +3,7 @@
 > 对应任务：SUP-172「[P4][core][CORE-A] 工单生命周期实现（陈川）」立即可开工项之「DB 迁移检视准备」。
 > 检视范围：详设 §3.2 中 `0002_tickets`（tickets / ticket_status_history / ticket_timeline）与 `0003_workflow`（assignments / comments / attachments / ticket_links / sla_timers / watchers / csat_ratings）。
 > 事实源：
-> - `specs/core子系统详细设计与实现说明书.md` v2.0 §3.2
+> - `specs/core子系统详细设计与实现说明书.md` v3.0 §3（轻量 MVP 事实源）
 > - `src/openapi/core.yaml` v1.1.0
 > - `specs/SmartDesk系统详细设计与实现说明书.md` §4.2 / §4.3
 >

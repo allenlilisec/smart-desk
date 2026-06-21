@@ -1,0 +1,15 @@
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Environment
+.env.e2e
+
+# Screenshots (for local debugging)
+screenshots/
+*.png
+*.webm
+
+# Videos (for local debugging)
+videos/

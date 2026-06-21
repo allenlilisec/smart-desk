@@ -3,7 +3,7 @@
 > M1 整体大设计的接口唯一事实源。OpenAPI 3.1。梁栋产出、秦诺维护与一致性校验（`api-contract-check`）。
 > 设计背景与数据模型/事件/信任模型见 [`../../specs/SmartDesk系统架构设计说明书.md`](../../specs/SmartDesk系统架构设计说明书.md)。
 >
-> **状态：v1.0-draft，待 CTO 评审 → 人类冻结。契约冻结前各开发团队不得编码。**
+> **状态：v1.1.0，MVP 轻量实现冻结。核心契约已对齐轻量 MVP 事实源（SUP-447 架构裁决）。**
 
 | 契约 | 服务 | 语言 | 暴露面 |
 |---|---|---|---|
@@ -23,7 +23,12 @@
 - 分页：`page`/`page_size`，响应 `{items, page, page_size, total}`。
 - 幂等：写操作支持 `Idempotency-Key` 头。
 - 时间 RFC3339 UTC；时长用整数（分钟/秒）。
-- 安全：gateway `bearerAuth`(用户 JWT)；core/insight `serviceAuth`(gateway 服务令牌) + `X-User-*` 透传身份。
+- 安全：
+  - gateway 对外使用 `bearerAuth`（用户 JWT）
+  - core/insight 内部使用 `serviceAuth`（gateway 服务令牌）：
+    - gateway 私钥签发 service-jwt，claim 承载最终用户身份（`sub`=用户ID、`roles`=角色数组、`org_id`=租户）
+    - core/insight 验签后从 claim 读取身份，**不再接受 `X-User-*` / `X-Org-Id` 明文透传头**（SUP-194 已移除，防伪造）
+    - 验签失败返回 401
 
 ## 校验
 

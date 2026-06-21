@@ -1,0 +1,136 @@
+name: Deploy Canary
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: '部署环境（staging=预发 compose，production=生产 K8s）'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      canary_stage:
+        description: '金丝雀阶段（C1=5%，C2=25%，C3=100%）'
+        required: true
+        default: 'c1'
+        type: choice
+        options:
+          - c1
+          - c2
+          - c3
+      canary_tag:
+        description: 'Canary 镜像 tag（留空使用当前 commit SHA）'
+        required: false
+        type: string
+      lkg_tag:
+        description: 'LKG 镜像 tag（仅用于 compose 镜像变量占位，默认 latest）'
+        required: false
+        default: 'latest'
+        type: string
+
+env:
+  SERVICE_NAME: web
+  REGISTRY: ghcr.io
+  IMAGE_NAME: allenlilisec/smartdesk-web
+
+jobs:
+  build:
+    name: 构建并推送 Canary 镜像
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
+      short_sha: ${{ steps.vars.outputs.short_sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set variables
+        id: vars
+        run: |
+          echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=canary-
+            type=raw,value=${{ inputs.canary_tag }},enable=${{ inputs.canary_tag != '' }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-canary:
+    name: 部署 Canary 轨并执行门禁
+    needs: build
+    runs-on: ubuntu-latest
+    environment: canary-${{ inputs.environment }}
+    steps:
+      - name: Checkout 本仓
+        uses: actions/checkout@v4
+
+      - name: Checkout smart-desk（compose 与脚本）
+        if: inputs.environment == 'staging'
+        uses: actions/checkout@v4
+        with:
+          repository: allenlilisec/smart-desk
+          path: smart-desk
+
+      - name: 预发 compose 部署 ${{ inputs.canary_stage }}
+        if: inputs.environment == 'staging'
+        env:
+          CANARY_TAG: ${{ inputs.canary_tag || needs.build.outputs.short_sha }}
+          LKG_TAG: ${{ inputs.lkg_tag }}
+        run: |
+          cd smart-desk
+          # 如仓库已提供真实 Dockerfile，可在此用 compose override 替换 healthz-stub 镜像；
+          # 骨架期 dry-run 使用 deploy/docker-compose.canary.yml 默认的 healthz-stub。
+          ./deploy/scripts/canary-stage.sh ${{ inputs.canary_stage }}
+          echo "Canary stage '${{ inputs.canary_stage }}' applied to staging."
+          echo "CANARY_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:canary-${{ env.CANARY_TAG }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 预发门禁检查（调用 scripts/canary-gates）
+        if: inputs.environment == 'staging'
+        run: |
+          cd smart-desk
+          GATE_SCRIPT="scripts/canary-gates/${{ inputs.canary_stage }}.sh"
+          if [ -x "$GATE_SCRIPT" ]; then
+            echo "Running gate script: $GATE_SCRIPT"
+            "$GATE_SCRIPT"
+          else
+            echo "Gate script $GATE_SCRIPT not found; placeholder until SUP-188 lands."
+            echo "Manual observation required per specs/灰度发布策略.md G2–G4."
+          fi
+
+      - name: 生产 K8s 部署（依赖 SUP-187）
+        if: inputs.environment == 'production'
+        run: |
+          echo "Production K8s canary deployment for ${{ env.SERVICE_NAME }} is blocked on SUP-187 manifests."
+          echo "Expected operation: kubectl apply -k deploy/k8s/${{ env.SERVICE_NAME }}"
+          echo "Canary image: ${{ needs.build.outputs.image_tag }}"
+          exit 1

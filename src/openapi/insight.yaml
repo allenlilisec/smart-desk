@@ -436,25 +436,14 @@ components:
 
     ClassificationSuggestedPayload:
       type: object
-      description: insight.classification_suggested 载荷。version=1，附加-only 演进规则同 DomainEvent。
+      description: >
+        insight.classification_suggested 载荷（version=1）。insight 仅给建议，分类/定级落库决策权在 core；
+        本载荷为 core Phase11 异步写回提供稳定契约。字段来源：ClassificationFeedback + 分类响应 + core 写回口径。
+        **演进规则**：同 DomainEvent §337-338——同一 version 内仅可增量新增可选字段（向后兼容），
+        删除/改名/改必填属破坏性变更，须 bump version 并经架构裁决。
       required: [predicted_category_id, confidence, priority, applied]
       properties:
-        predicted_category_id:
-          type: string
-          format: uuid
-          nullable: true
-          description: 预测的分类 ID（null 表示无法分类）
-        confidence:
-          type: number
-          format: float
-          minimum: 0
-          maximum: 1
-          description: 分类置信度（0-1）
-        priority:
-          type: string
-          enum: [P1, P2, P3, P4]
-          nullable: true
-          description: 建议的优先级（null 表示未建议）
-        applied:
-          type: boolean
-          description: 该分类建议是否已被应用（用户接受或系统自动应用）
+        predicted_category_id: { type: string, format: uuid, nullable: true }
+        confidence:            { type: number, format: float, minimum: 0, maximum: 1 }
+        priority:              { type: string, enum: [P1, P2, P3, P4], nullable: true }
+        applied:               { type: boolean }

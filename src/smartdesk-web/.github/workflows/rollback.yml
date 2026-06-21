@@ -1,0 +1,61 @@
+name: Rollback to LKG
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: '部署环境'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      lkg_tag:
+        description: 'LKG 镜像 tag'
+        required: true
+        type: string
+
+env:
+  SERVICE_NAME: web
+  REGISTRY: ghcr.io
+  IMAGE_NAME: allenlilisec/smartdesk-web
+
+jobs:
+  rollback:
+    name: 回滚至 LKG
+    runs-on: ubuntu-latest
+    environment: rollback-${{ inputs.environment }}
+    steps:
+      - name: Checkout smart-desk（compose 与脚本）
+        uses: actions/checkout@v4
+        with:
+          repository: allenlilisec/smart-desk
+          path: smart-desk
+
+      - name: 预发 compose 回滚
+        if: inputs.environment == 'staging'
+        env:
+          LKG_TAG: ${{ inputs.lkg_tag }}
+        run: |
+          cd smart-desk
+          ./deploy/scripts/canary-stage.sh rollback
+          echo "Rolled back to LKG tag ${{ inputs.lkg_tag }} in staging."
+
+      - name: 预发健康验证
+        if: inputs.environment == 'staging'
+        run: |
+          cd smart-desk
+          echo "Running P0 smoke checks per specs/回滚预案.md §5.1 ..."
+          # 骨架期占位：真实验证待服务就绪后补齐
+          for svc in core insight gateway web; do
+            echo "Check $svc /healthz + /readyz"
+          done
+
+      - name: 生产 K8s 回滚（依赖 SUP-187）
+        if: inputs.environment == 'production'
+        run: |
+          echo "Production K8s rollback for ${{ env.SERVICE_NAME }} is blocked on SUP-187 manifests."
+          echo "Expected operation: kubectl set image deployment/${{ env.SERVICE_NAME }}-stable ${{ env.SERVICE_NAME }}=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.lkg_tag }}"
+          echo "And: kubectl rollout undo deployment/${{ env.SERVICE_NAME }}-canary"
+          exit 1

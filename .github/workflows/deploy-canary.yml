@@ -1,0 +1,195 @@
+name: Deploy Canary
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: '目标灰度阶段'
+        required: true
+        type: choice
+        options: [c1, c2, c3]
+        default: c1
+      stable_tag:
+        description: 'stable/LKG 镜像 tag'
+        required: true
+        default: 'latest'
+      canary_tag:
+        description: 'canary 镜像 tag'
+        required: true
+        default: 'canary'
+      ingress_port:
+        description: 'ingress 端口'
+        required: false
+        default: '19080'
+      notify_recipients:
+        description: '额外通知对象（逗号分隔）'
+        required: false
+        default: ''
+
+jobs:
+  notify-start:
+    name: 启动通知
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 发布启动通知
+        uses: ./.github/actions/notify-alert
+        with:
+          severity: info
+          title: "灰度发布启动：${{ inputs.stage }}"
+          body: |
+            灰度流水线已启动，目标阶段：${{ inputs.stage }}。
+            stable tag：${{ inputs.stable_tag }}，canary tag：${{ inputs.canary_tag }}。
+            等待 G 门禁人工确认后推进。
+          recipients: ${{ inputs.notify_recipients != '' && inputs.notify_recipients || '发布群' }}
+          webhook_url: ${{ secrets.NOTIFY_WEBHOOK_URL }}
+
+  build-canary-stub:
+    name: 构建并推送 canary stub 镜像
+    needs: notify-start
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push canary stub
+        uses: docker/build-push-action@v5
+        with:
+          context: ./deploy/healthz-stub
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/smartdesk-canary-stub:${{ inputs.canary_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  gate:
+    name: G 门禁人工确认
+    needs: build-canary-stub
+    runs-on: ubuntu-latest
+    environment: canary-gate-${{ inputs.stage }}
+    timeout-minutes: 60
+    steps:
+      - name: 门禁确认通过
+        run: |
+          gate_no=${{ inputs.stage == 'c1' && '2' || inputs.stage == 'c2' && '3' || '4' }}
+          echo "G${gate_no} 门禁已通过：CTO 确认 ${{ inputs.stage }} 放量"
+
+  notify-gate-timeout:
+    name: 门禁超时告警
+    needs: gate
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 发送超时告警
+        uses: ./.github/actions/notify-alert
+        with:
+          severity: P1
+          title: "灰度门禁人工确认超时：${{ inputs.stage }}"
+          body: |
+            GitHub Environment `canary-gate-${{ inputs.stage }}` 的 required reviewer
+            在 60 分钟内未审批。
+            已冻结 ${{ inputs.stage }} 放量，请 CTO / 白帆尽快处理。
+          recipients: ${{ inputs.notify_recipients != '' && inputs.notify_recipients || '万全,白帆,CTO' }}
+          webhook_url: ${{ secrets.NOTIFY_WEBHOOK_URL }}
+
+  deploy-stage:
+    name: 部署 canary 阶段
+    needs: gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 部署 canary 阶段 ${{ inputs.stage }}
+        env:
+          STABLE_TAG: ${{ inputs.stable_tag }}
+          CANARY_TAG: ${{ inputs.canary_tag }}
+          INGRESS_PORT: ${{ inputs.ingress_port }}
+          # CI 资源受限，使用较小副本；语义仍对齐 C1/C2/C3
+          GATEWAY_STABLE_REPLICAS: ${{ inputs.stage == 'c1' && '3' || inputs.stage == 'c2' && '1' || '0' }}
+          GATEWAY_CANARY_REPLICAS: '1'
+          WEB_STABLE_REPLICAS: ${{ inputs.stage == 'c1' && '3' || inputs.stage == 'c2' && '1' || '0' }}
+          WEB_CANARY_REPLICAS: '1'
+          CORE_STABLE_REPLICAS: ${{ inputs.stage == 'c1' && '3' || inputs.stage == 'c2' && '1' || '0' }}
+          CORE_CANARY_REPLICAS: '1'
+          INSIGHT_STABLE_REPLICAS: ${{ inputs.stage == 'c1' && '3' || inputs.stage == 'c2' && '1' || '0' }}
+          INSIGHT_CANARY_REPLICAS: '1'
+        run: |
+          docker compose -f deploy/docker-compose.canary.yml up -d --build
+          ./deploy/scripts/canary-stage.sh ${{ inputs.stage }}
+
+      - name: 验证分流比例
+        env:
+          INGRESS_PORT: ${{ inputs.ingress_port }}
+        run: |
+          ./deploy/scripts/verify-split.sh "http://localhost:${INGRESS_PORT:-19080}/api/" 40
+
+  promote:
+    name: 阶段推进提醒
+    needs: deploy-stage
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 发送推进提醒
+        uses: ./.github/actions/notify-alert
+        with:
+          severity: success
+          title: "灰度阶段 ${{ inputs.stage }} 部署成功"
+          body: |
+            ${{ inputs.stage }} 已成功部署并验证分流。
+
+            下一门禁：
+            ${{ inputs.stage == 'c1' && '等待 G3 人工确认后推进 C2（25%）。' || inputs.stage == 'c2' && '等待 G4 人工确认后推进 C3（100%）。' || '等待 G5 CTO 最终确认完成全量发布。' }}
+
+            **告警清零 ≠ 自动放量**。
+          recipients: ${{ inputs.notify_recipients != '' && inputs.notify_recipients || '发布群' }}
+          webhook_url: ${{ secrets.NOTIFY_WEBHOOK_URL }}
+
+  notify-failure:
+    name: 失败兜底告警
+    needs: [build-canary-stub, gate, deploy-stage, promote]
+    if: |
+      always() && (
+        needs.build-canary-stub.result == 'failure' ||
+        needs.deploy-stage.result == 'failure' ||
+        needs.promote.result == 'failure'
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 发送失败告警
+        uses: ./.github/actions/notify-alert
+        with:
+          severity: P0
+          title: "灰度发布失败：${{ inputs.stage }}"
+          body: |
+            `deploy-canary.yml` 在执行 ${{ inputs.stage }} 阶段时失败。
+
+            可能原因：
+            - 镜像构建或 GHCR 推送失败
+            - compose 部署脚本退出码非零
+            - 分流比例验证失败
+
+            门禁超时由 notify-gate-timeout 单独按 P1 路由，不在此重复告警。
+            请万全立即查看运行日志，白帆裁决是否执行回滚。
+          recipients: ${{ inputs.notify_recipients != '' && inputs.notify_recipients || '万全,白帆,CTO' }}
+          webhook_url: ${{ secrets.NOTIFY_WEBHOOK_URL }}

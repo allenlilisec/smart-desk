@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: smartdesk-canary
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - gateway/deployment-stable.yaml
+  - gateway/deployment-canary.yaml
+  - gateway/service.yaml
+  - gateway/ingress.yaml
+  - core/deployment-stable.yaml
+  - core/deployment-canary.yaml
+  - core/service.yaml
+  - insight/deployment-stable.yaml
+  - insight/deployment-canary.yaml
+  - insight/service.yaml
+  - web/deployment-stable.yaml
+  - web/deployment-canary.yaml
+  - web/service.yaml
+  - web/ingress.yaml

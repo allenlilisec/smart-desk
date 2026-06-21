@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-stable
+  namespace: smartdesk-canary
+  labels:
+    app: web
+    version: stable
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web
+      version: stable
+  template:
+    metadata:
+      labels:
+        app: web
+        version: stable
+    spec:
+      containers:
+        - name: web
+          image: smartdesk/web:stable
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: smartdesk-config
+          env:
+            - name: SERVICE
+              value: "web"
+            - name: VERSION
+              value: "stable"
+            - name: PORT
+              value: "3000"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10

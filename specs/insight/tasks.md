@@ -28,7 +28,7 @@
 | INS-8 serviceAuth | `app/auth.py` | ✅ JWT 校验已合入 submodule main |
 | INS-2/3 分类/定级 | `app/routers/classification.py`、`app/services/classification.py`、`ml/*` | ✅ `/classification/predict` 返回嵌套 `PredictResult`，种子语料 228 条，准确率测试覆盖 |
 | INS-2 feedback | `app/routers/feedback.py`、`app/services/feedback.py`、`app/models.py:ClassificationFeedback` | ✅ `/feedback/classification` 已落表 |
-| INS-1 写回事件 | `app/services/event_processor.py`、`app/infrastructure/nats_publisher.py` | ✅ `ticket.created` 后发布 `insight.classification_suggested`，payload 使用嵌套 `PredictResult` |
+| INS-1 写回事件 | `app/services/event_processor.py`、`app/infrastructure/nats_publisher.py` | ✅ `ticket.created` 后发布 `insight.classification_suggested`，payload 使用扁平 `ClassificationSuggestedPayload` |
 | INS-6/7 通知中心 | `app/routers/notifications.py`、`app/services/notifications.py`、`app/models.py` | ✅ 站内/邮件通知、策略接口、重试与死信记录已就绪 |
 | 事件消费幂等 | `app/services/event_processor.py`、`app/models.py:ProcessedEvent` | ✅ 去重骨架已就绪 |
 
@@ -49,7 +49,7 @@
 | D-2 | 基线 submodule@`d0fb07d` 中 `notification_policies` 缺省 enabled，事件消费会默认创建 inapp + email；但 PR11 已确认目标语义为“无策略时只生成站内通知，email 需显式策略开启” | 基线实现与目标语义不一致；PR75 不应把默认双通道当最终事实 | 标为 **PR11 gap closure/待同步**：待 PR11 合入后，PR75 以站内默认、邮件显式开启为最终状态刷新 |
 | D-3 | `ticket.created` 当前只触发分类/定级写回与通知，未维护 `similarity_index` | 与详设“分类/定级/相似”同源异步处理不一致 | INS-4 实现时补 `similarity_index` 投影，不改跨服务契约 |
 | D-4 | `readyz` 设计要求 DB+NATS，代码只查 DB | 运维健康检查覆盖不足 | 本域可补：增加 NATS 连通性或显式降级状态 |
-| D-5 | `DomainEvent.payload` 对 `ticket.commented`、`ticket.merged`、`insight.classification_suggested` 仍是自由 object | M4 事件契约未固化 | 只列 drift；需梁栋/秦诺冻结事件 schema 后再改 |
+| D-5 | `DomainEvent.payload` 对 `ticket.commented`、`ticket.merged` 仍是自由 object；`insight.classification_suggested` 已固化为扁平 `ClassificationSuggestedPayload` | M4 剩余事件契约未固化 | `classification_suggested` 按 v1 固化口径执行；`ticket.commented`、`ticket.merged` 待 M4 冻结 |
 
 ### 0.4 tasks.md 逐项 done / gap / drift 回贴
 
@@ -63,7 +63,7 @@
 | T006 | done+drift | `app/db.py` | runtime engine/session 可用；路径与 `app/infrastructure/db.py` 设计漂移，Alembic 同构未落地。 |
 | T007 | done+gap | `app/nats_consumer.py`、`app/services/event_processor.py` | 有 JetStream stream/consumer、ack/nak、幂等；缺独立 `nats_client.py`、按 `ticket_id` 顺序分区与失败状态记录。 |
 | T008 | gap | `app/services/event_processor.py` | 处理 ticket 事件用于通知/分类写回；未维护 `similarity_index` 投影。 |
-| T009 | done | `app/infrastructure/nats_publisher.py`、`app/services/event_processor.py` | 发布 `insight.classification_suggested`，payload 为嵌套 `PredictResult`。 |
+| T009 | done | `app/infrastructure/nats_publisher.py`、`app/services/event_processor.py` | 发布 `insight.classification_suggested`，payload 为扁平 `ClassificationSuggestedPayload`。 |
 | T010 | done+drift | `app/schemas.py` | `TicketCreatedPayload`、`TicketStatusChangedPayload`、`TicketResolvedPayload` 已有；`DomainEvent.payload` 仍是自由 `dict`。 |
 | T011 | done+gap | `tests/test_classification.py` | 覆盖嵌套响应字段；未做 OpenAPI schema 严格契约 diff。 |
 | T012 | done | `ml/seeds/corpus.py`、`tests/test_classification.py` | 种子语料 228 条，准确率测试要求 >=80%。 |
@@ -119,7 +119,7 @@
 - [ ] T006 [INS-0] `app/infrastructure/db.py`：复用现有 `engine`/`AsyncSessionLocal`，确保 Alembic 与运行时同构
 - [ ] T007 [INS-0] `app/infrastructure/nats_client.py` / `app/workers/event_consumer.py`：统一 NATS JetStream 连接、订阅、ack/nak、幂等去重；消费主题 `smartdesk.ticket.*`
 - [ ] T008 [INS-1] `app/workers/handlers.py`：实现 `ticket.created` / `ticket.status_changed` / `ticket.resolved|closed|reopened` 处理器，维护 `similarity_index` 投影
-- [ ] T009 [INS-1] 写回发布：`app/infrastructure/nats_publisher.py` 发布 `insight.classification_suggested`，payload 为嵌套 `PredictResult`（与 `core.yaml` 消费侧对齐）
+- [ ] T009 [INS-1] 写回发布：`app/infrastructure/nats_publisher.py` 发布 `insight.classification_suggested`，payload 为扁平 `ClassificationSuggestedPayload`（`predicted_category_id`/`confidence`/`priority`/`applied`，与 `insight.yaml` 和 core 消费侧对齐）
 - [ ] T010 [INS-1] 事件 payload Pydantic 模型：固化 `TicketCreatedPayload`、`TicketStatusChangedPayload`、`TicketResolvedPayload`（与 `app/schemas.py` 现有模型一致）
 
 **Checkpoint**：空服务可启动，`/healthz`/`/readyz` 通过；NATS 事件可消费、可去重、可写回。
@@ -148,7 +148,7 @@
 - [ ] T020 [INS-2/3] `app/api/routers/classification.py`：`POST /classification/predict`，模型不可用时 503
 - [ ] T021 [INS-2/3] `app/services/event_processor.py`：消费 `ticket.created` 后调用分类/定级，发布 `insight.classification_suggested`
 
-**Checkpoint**：`POST /classification/predict` 可返回嵌套建议；`ticket.created` 可写回 `insight.classification_suggested`。
+**Checkpoint**：`POST /classification/predict` 可返回嵌套 `PredictResult`；`ticket.created` 可写回扁平 `insight.classification_suggested`。
 
 ---
 
@@ -221,7 +221,7 @@ Phase7 INS-8 加固 ──▶ M4 验收
 ```
 
 **跨模块阻塞项**（需 PMO/架构推动，不阻塞本清单内部）：
-- O-1：core 消费侧 `PredictResult` 嵌套结构 → `ClassificationSuggestion` 扁平转换（石磊/梁栋确认）
+- O-1：core 消费侧按 `ClassificationSuggestedPayload` 扁平字段写入 `ClassificationSuggestion`（石磊/梁栋确认）
 - O-3：邮件网关/SMTP 真实凭证（M3 投产阻塞）
 - O-6：分类树同步方式（core ↔ insight）
 
