@@ -1,288 +1,271 @@
-/**
- * API Mock 辅助函数
- * 支持 Mock 模式和真实 Gateway 模式
- */
-
-import { Page, Route } from '@playwright/test'
-
-// Mock 数据类型
-interface MockTicket {
-  id: string
-  title: string
-  description: string
-  category: string
-  status: 'new' | 'open' | 'in_progress' | 'resolved' | 'closed'
-  priority: 'P0' | 'P1' | 'P2' | 'P3'
-  requesterId: string
-  requesterName: string
-  assigneeId: string | null
-  assigneeName: string | null
-  createdAt: string
-  updatedAt: string
-}
-
-interface MockComment {
-  id: string
-  ticketId: string
-  authorId: string
-  authorName: string
-  authorRole: 'requester' | 'agent'
-  content: string
-  type: 'public' | 'internal'
-  createdAt: string
-}
-
-// 内存存储 Mock 数据
-class MockDataStore {
-  private tickets: Map<string, MockTicket> = new Map()
-  private comments: Map<string, MockComment[]> = new Map()
-  private idCounter = 1
-
-  generateId(): string {
-    return `ticket-${Date.now()}-${this.idCounter++}`
-  }
-
-  createTicket(ticket: Omit<MockTicket, 'id' | 'createdAt' | 'updatedAt'>): MockTicket {
-    const newTicket: MockTicket = {
-      ...ticket,
-      id: this.generateId(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }
-    this.tickets.set(newTicket.id, newTicket)
-    this.comments.set(newTicket.id, [])
-    return newTicket
-  }
-
-  getTicket(id: string): MockTicket | undefined {
-    return this.tickets.get(id)
-  }
-
-  getAllTickets(): MockTicket[] {
-    return Array.from(this.tickets.values())
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-  }
-
-  getTicketsByRequester(requesterId: string): MockTicket[] {
-    return this.getAllTickets().filter(t => t.requesterId === requesterId)
-  }
-
-  updateTicket(id: string, updates: Partial<MockTicket>): MockTicket | undefined {
-    const ticket = this.tickets.get(id)
-    if (!ticket) return undefined
-    
-    const updated = { ...ticket, ...updates, updatedAt: new Date().toISOString() }
-    this.tickets.set(id, updated)
-    return updated
-  }
-
-  addComment(ticketId: string, comment: Omit<MockComment, 'id' | 'createdAt'>): MockComment {
-    const newComment: MockComment = {
-      ...comment,
-      id: `comment-${Date.now()}-${this.idCounter++}`,
-      createdAt: new Date().toISOString(),
-    }
-    
-    const ticketComments = this.comments.get(ticketId) || []
-    ticketComments.push(newComment)
-    this.comments.set(ticketId, ticketComments)
-    
-    return newComment
-  }
-
-  getComments(ticketId: string): MockComment[] {
-    return this.comments.get(ticketId) || []
-  }
-
-  clear(): void {
-    this.tickets.clear()
-    this.comments.clear()
-    this.idCounter = 1
-  }
-}
-
-// 全局 Mock 数据存储
-export const mockStore = new MockDataStore()
+import { Page, Route, Request } from '@playwright/test';
+import { MOCK_API_RESPONSES, TicketData, CommentData } from '../fixtures/test-data';
 
 /**
- * 设置 Mock API 路由
- * @param page Playwright page 对象
+ * API Mock 助手
+ * 用于 Mock 模式下拦截和模拟 API 响应
  */
-export async function setupMockAPI(page: Page): Promise<void> {
-  // 清除之前的 Mock 数据
-  mockStore.clear()
 
-  // 拦截 Gateway API 请求
-  await page.route('**/api/v1/**', async (route: Route) => {
-    const url = route.request().url()
-    const method = route.request().method()
-    
-    // 工单创建
-    if (url.includes('/tickets') && method === 'POST') {
-      const body = await route.request().postDataJSON()
-      const ticket = mockStore.createTicket({
-        title: body.title,
-        description: body.description,
-        category: body.category,
-        status: 'new',
-        priority: body.priority || 'P2',
-        requesterId: 'zhangsan',
-        requesterName: '张三',
-        assigneeId: null,
-        assigneeName: null,
-      })
-      
-      await route.fulfill({
-        status: 201,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          success: true,
-          data: ticket,
-        }),
-      })
-      return
+export class ApiMockHelper {
+  private page: Page;
+  private mockEnabled: boolean;
+  private customHandlers: Map<string, (route: Route, request: Request) => void> = new Map();
+
+  constructor(page: Page) {
+    this.page = page;
+    this.mockEnabled = process.env.E2E_MODE === 'mock';
+  }
+
+  /**
+   * 启用 Mock 模式
+   * 拦截 Gateway API 请求并返回模拟数据
+   */
+  async enableMock(): Promise<void> {
+    if (!this.mockEnabled) {
+      console.log('⚠️  非 Mock 模式，跳过 API Mock');
+      return;
     }
+
+    console.log('🎭 启用 API Mock');
+
+    // 拦截所有 Gateway API 请求
+    await this.page.route('**/api/**', this.handleMockRoute.bind(this));
     
-    // 工单列表查询
-    if (url.includes('/tickets') && method === 'GET') {
-      const tickets = mockStore.getAllTickets()
-      
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          success: true,
-          data: {
-            items: tickets,
-            total: tickets.length,
-          },
-        }),
-      })
-      return
-    }
-    
-    // 工单详情查询
-    if (url.match(/\/tickets\/[^/]+$/) && method === 'GET') {
-      const ticketId = url.split('/').pop()
-      const ticket = ticketId ? mockStore.getTicket(ticketId) : undefined
-      
-      if (ticket) {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            success: true,
-            data: ticket,
-          }),
-        })
-      } else {
-        await route.fulfill({
-          status: 404,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            success: false,
-            error: 'Ticket not found',
-          }),
-        })
+    // 拦截 Next.js API 路由
+    await this.page.route('/api/**', this.handleMockRoute.bind(this));
+  }
+
+  /**
+   * 禁用 Mock 模式
+   */
+  async disableMock(): Promise<void> {
+    await this.page.unrouteAll();
+    this.customHandlers.clear();
+  }
+
+  /**
+   * 添加自定义 Mock 处理器
+   * @param pattern URL 匹配模式
+   * @param handler 处理函数
+   */
+  addHandler(pattern: string, handler: (route: Route, request: Request) => void): void {
+    this.customHandlers.set(pattern, handler);
+  }
+
+  /**
+   * 处理 Mock 路由
+   */
+  private async handleMockRoute(route: Route, request: Request): Promise<void> {
+    const url = request.url();
+    const method = request.method();
+    const pathname = new URL(url).pathname;
+    const key = `${method} ${pathname}`;
+
+    // 先检查自定义处理器
+    for (const [pattern, handler] of this.customHandlers) {
+      if (this.matchPattern(pathname, pattern)) {
+        return handler(route, request);
       }
-      return
     }
+
+    // 使用默认 Mock 响应
+    const mockResponse = this.getMockResponse(key, pathname, method, request);
     
-    // 评论列表查询
-    if (url.match(/\/tickets\/[^/]+\/comments$/) && method === 'GET') {
-      const ticketId = url.split('/')[url.split('/').length - 2]
-      const comments = ticketId ? mockStore.getComments(ticketId) : []
-      
+    if (mockResponse) {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({
-          success: true,
-          data: comments,
-        }),
-      })
-      return
+        body: JSON.stringify(mockResponse),
+      });
+    } else {
+      // 未匹配到 Mock，继续请求
+      await route.continue();
     }
+  }
+
+  /**
+   * 匹配 URL 模式
+   */
+  private matchPattern(pathname: string, pattern: string): boolean {
+    // 简单实现：支持 :param 和 * 通配
+    const regex = new RegExp(
+      '^' + pattern
+        .replace(/\//g, '\\/')
+        .replace(/:\w+/g, '[^/]+')
+        .replace(/\*/g, '.*') + '$'
+    );
+    return regex.test(pathname);
+  }
+
+  /**
+   * 获取 Mock 响应
+   */
+  private getMockResponse(key: string, pathname: string, method: string, request: Request): any {
+    // 精确匹配
+    if (key in MOCK_API_RESPONSES) {
+      const response = MOCK_API_RESPONSES[key as keyof typeof MOCK_API_RESPONSES];
+      return typeof response === 'function' ? response(request.postDataJSON() || {}) : response;
+    }
+
+    // 路径参数匹配 (如 /api/tickets/123)
+    const patterns = Object.keys(MOCK_API_RESPONSES);
+    for (const pattern of patterns) {
+      if (this.matchDynamicPath(pattern, key)) {
+        const response = MOCK_API_RESPONSES[pattern as keyof typeof MOCK_API_RESPONSES];
+        return typeof response === 'function' ? response(request.postDataJSON() || {}) : response;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * 匹配动态路径
+   * 如 /api/tickets/:id 匹配 /api/tickets/123
+   */
+  private matchDynamicPath(pattern: string, actual: string): boolean {
+    const patternParts = pattern.split(' ');
+    const actualParts = actual.split(' ');
     
-    // 评论创建
-    if (url.match(/\/tickets\/[^/]+\/comments$/) && method === 'POST') {
-      const ticketId = url.split('/')[url.split('/').length - 2]
-      const body = await route.request().postDataJSON()
-      
-      if (ticketId) {
-        const comment = mockStore.addComment(ticketId, {
-          ticketId,
-          authorId: body.authorId,
-          authorName: body.authorName,
-          authorRole: body.authorRole,
-          content: body.content,
-          type: body.type,
-        })
-        
-        await route.fulfill({
+    if (patternParts.length !== actualParts.length) return false;
+    if (patternParts[0] !== actualParts[0]) return false;
+
+    const patternPath = patternParts[1];
+    const actualPath = actualParts[1];
+
+    const patternSegments = patternPath.split('/');
+    const actualSegments = actualPath.split('/');
+
+    if (patternSegments.length !== actualSegments.length) return false;
+
+    return patternSegments.every((segment, i) => {
+      if (segment.startsWith(':')) return true; // 路径参数
+      return segment === actualSegments[i];
+    });
+  }
+
+  /**
+   * Mock 工单创建
+   */
+  mockTicketCreate(ticketData: TicketData): void {
+    this.addHandler('/api/tickets', (route, request) => {
+      if (request.method() === 'POST') {
+        route.fulfill({
           status: 201,
           contentType: 'application/json',
-          body: JSON.stringify({
-            success: true,
-            data: comment,
-          }),
-        })
+          body: JSON.stringify(ticketData),
+        });
       } else {
-        await route.fulfill({
-          status: 400,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            success: false,
-            error: 'Invalid ticket ID',
-          }),
-        })
+        route.continue();
       }
-      return
-    }
-    
-    // 其他请求继续
-    await route.continue()
-  })
+    });
+  }
+
+  /**
+   * Mock 工单列表
+   */
+  mockTicketList(tickets: TicketData[]): void {
+    this.addHandler('/api/tickets', (route, request) => {
+      if (request.method() === 'GET') {
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ tickets, total: tickets.length }),
+        });
+      } else {
+        route.continue();
+      }
+    });
+  }
+
+  /**
+   * Mock 评论创建
+   */
+  mockCommentCreate(commentData: CommentData): void {
+    const pattern = '/api/tickets/*/comments';
+    this.addHandler(pattern, (route, request) => {
+      if (request.method() === 'POST') {
+        route.fulfill({
+          status: 201,
+          contentType: 'application/json',
+          body: JSON.stringify(commentData),
+        });
+      } else {
+        route.continue();
+      }
+    });
+  }
+
+  /**
+   * Mock 状态流转
+   */
+  mockStatusTransition(ticketId: string, newStatus: string): void {
+    const pattern = `/api/tickets/${ticketId}/transitions`;
+    this.addHandler(pattern, (route) => {
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ status: newStatus, updatedAt: new Date().toISOString() }),
+      });
+    });
+  }
+
+  /**
+   * Mock 工单创建（/api/v1/tickets）
+   */
+  mockTicketCreateV1(ticketData: TicketData): void {
+    this.addHandler('/api/v1/tickets', (route, request) => {
+      if (request.method() === 'POST') {
+        route.fulfill({
+          status: 201,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, data: ticketData }),
+        });
+      } else {
+        route.continue();
+      }
+    });
+  }
+
+  /**
+   * Mock 工单列表（/api/v1/tickets）
+   */
+  mockTicketListV1(tickets: TicketData[]): void {
+    this.addHandler('/api/v1/tickets', (route, request) => {
+      if (request.method() === 'GET') {
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, data: { items: tickets, total: tickets.length } }),
+        });
+      } else {
+        route.continue();
+      }
+    });
+  }
+
+  /**
+   * Mock 工单详情（/api/v1/tickets/:id）
+   */
+  mockTicketDetailV1(ticketData: TicketData): void {
+    const pattern = '/api/v1/tickets/:id';
+    this.addHandler(pattern, (route, request) => {
+      if (request.method() === 'GET') {
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, data: ticketData }),
+        });
+      } else {
+        route.continue();
+      }
+    });
+  }
 }
 
 /**
- * 清除 Mock API 路由
- * @param page Playwright page 对象
+ * 创建 API Mock 助手的工厂函数
  */
-export async function clearMockAPI(page: Page): Promise<void> {
-  await page.unroute('**/api/v1/**')
-  mockStore.clear()
-}
-
-/**
- * 获取 Mock 工单数据（用于测试断言）
- * @param ticketId 工单 ID
- */
-export function getMockTicket(ticketId: string): MockTicket | undefined {
-  return mockStore.getTicket(ticketId)
-}
-
-/**
- * 获取所有 Mock 工单
- */
-export function getAllMockTickets(): MockTicket[] {
-  return mockStore.getAllTickets()
-}
-
-/**
- * 预创建测试数据
- * @param requesterId 报单人 ID
- */
-export function createTestTicket(requesterId: string = 'zhangsan'): MockTicket {
-  return mockStore.createTicket({
-    title: '无法访问黄区代码仓',
-    description: '申请访问权限',
-    category: 'access_request',
-    status: 'new',
-    priority: 'P2',
-    requesterId,
-    requesterName: '张三',
-    assigneeId: null,
-    assigneeName: null,
-  })
+export function createApiMock(page: Page): ApiMockHelper {
+  return new ApiMockHelper(page);
 }

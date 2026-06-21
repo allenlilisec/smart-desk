@@ -76,8 +76,8 @@ export default function TicketDetail() {
 
       const data = await response.json()
       setTicket(data.data)
-    } catch (err: any) {
-      setError(err.message || '加载工单详情失败')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '加载工单详情失败')
     } finally {
       setIsLoading(false)
     }

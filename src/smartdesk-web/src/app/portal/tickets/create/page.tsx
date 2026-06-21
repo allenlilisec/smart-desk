@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -19,6 +19,14 @@ export default function CreateTicket() {
   const [errors, setErrors] = useState<FormErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
+
+  useEffect(() => {
+    // 检查登录状态
+    const token = localStorage.getItem('auth_token')
+    if (!token) {
+      router.push('/portal/login')
+    }
+  }, [router])
 
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {}

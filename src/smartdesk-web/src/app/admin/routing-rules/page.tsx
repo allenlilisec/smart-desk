@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { RoutingRule, Priority, Strategy } from "@/types/routing-rule";
+import { RoutingRule, Priority } from "@/types/routing-rule";
 import { getMatchConditionDisplay, getTargetDisplay, getStrategyDisplay } from "@/lib/validation";
 
 // 模拟数据 - 实际应从 API 获取
@@ -113,8 +113,9 @@ export default function RoutingRulesPage() {
     }
   };
 
-  // 获取优先级颜色
-  const getPriorityColor = (priority?: Priority) => {
+  // 获取优先级颜色（预留，供后续优先级筛选功能使用）
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _getPriorityColor = (priority?: Priority) => {
     switch (priority) {
       case "P1":
         return "text-red-600 bg-red-50";
