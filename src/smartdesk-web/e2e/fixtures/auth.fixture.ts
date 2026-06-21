@@ -65,9 +65,12 @@ export type TestFixtures = {
 /**
  * 扩展 test，添加认证 fixture
  */
+// 默认 Mock 模式，与 playwright.config.ts / api-mock.ts / global-setup.ts 保持一致
+const isMockMode = (process.env.E2E_MODE || 'mock') === 'mock';
+
 export const test = base.extend<TestFixtures>({
   isMockMode: async ({}, use) => {
-    await use(process.env.E2E_MODE === 'mock');
+    await use(isMockMode);
   },
 
   auth: async ({ page, isMockMode }, use) => {
@@ -79,10 +82,10 @@ export const test = base.extend<TestFixtures>({
         const user = TEST_USERS[role];
         const displayName = USER_DISPLAY_NAMES[role];
 
+        // Mock 模式：直接设置 localStorage
         if (isMockMode) {
-          // Mock 模式：先访问页面，然后通过 evaluate 设置 localStorage
-          // 访问一个空白页面来设置 localStorage
-          await page.goto('/portal');
+          // 先导航到应用 origin，否则 about:blank 无法访问 localStorage
+          await page.goto('/');
           const token = generateMockToken(user);
           await page.evaluate(
             ({ token, role, displayName }) => {
@@ -92,32 +95,29 @@ export const test = base.extend<TestFixtures>({
             },
             { token, role: user.role, displayName }
           );
-          // 刷新页面使登录状态生效
-          await page.reload();
           return;
         }
 
-        // 真实 Gateway 模式：通过登录页表单登录
-        const loginPath = role === 'portal' ? '/portal/login' : `/${role}/login`;
-        await page.goto(loginPath);
-        await page.fill('[data-testid="username-input"]', user.username);
-        await page.fill('[data-testid="password-input"]', user.password);
-        await page.click('[data-testid="login-button"]');
-        await page.waitForURL(/\/(portal|agent|admin)$/);
+        // 真实模式：走登录流程
+        await page.goto('/login');
+        await page.fill('[name="username"]', user.username);
+        await page.fill('[name="password"]', user.password);
+        await page.click('button[type="submit"]');
+        await page.waitForURL(/\/(portal|agent|admin)/);
       },
 
       /**
        * 登出
        */
       logout: async () => {
-        try {
+        if (isMockMode) {
+          // 先导航到应用 origin，否则 about:blank 无法访问 localStorage
+          await page.goto('/');
           await page.evaluate(() => {
             localStorage.removeItem('auth_token');
             localStorage.removeItem('user_role');
             localStorage.removeItem('user_name');
           });
-        } catch {
-          // 页面未加载时忽略清理错误
         }
       },
 

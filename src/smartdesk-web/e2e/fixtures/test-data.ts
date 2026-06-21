@@ -1,6 +1,6 @@
 /**
  * E2E 测试数据
- * 
+ *
  * 包含：
  * - 测试工单数据
  * - 测试评论数据
@@ -79,22 +79,22 @@ export const MOCK_API_RESPONSES = {
     page: 1,
     pageSize: 20,
   },
-  
+
   // 工单详情
   'GET /api/tickets/:id': SAMPLE_TICKET_ZHANGSAN,
-  
+
   // 创建工单
   'POST /api/tickets': {
     ...SAMPLE_TICKET_ZHANGSAN,
     id: 'ticket-new-' + Date.now(),
   },
-  
+
   // 评论列表
   'GET /api/tickets/:id/comments': {
     comments: SAMPLE_COMMENTS,
     total: SAMPLE_COMMENTS.length,
   },
-  
+
   // 创建评论
   'POST /api/tickets/:id/comments': (data: { content: string; isInternal?: boolean }) => ({
     id: 'comment-new-' + Date.now(),
@@ -104,7 +104,7 @@ export const MOCK_API_RESPONSES = {
     isInternal: data.isInternal || false,
     createdAt: new Date().toISOString(),
   }),
-  
+
   // 状态流转
   'POST /api/tickets/:id/transitions': (data: { status: string }) => ({
     ...SAMPLE_TICKET_ZHANGSAN,
