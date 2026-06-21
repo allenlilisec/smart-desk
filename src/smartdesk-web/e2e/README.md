@@ -1,127 +1,65 @@
 # SmartDesk Web E2E 测试
 
-基于 Playwright 的端到端测试套件。
+## 新增页面
 
-## 快速开始
+### /portal - 报单人门户
+- 新建工单表单（支持标题、描述、分类、优先级）
+- 成功反馈并展示工单号
+- 链接到我的工单列表
+
+### /portal/my-tickets - 我的工单列表
+- 工单列表展示（标题、状态、优先级、创建时间）
+- 搜索和状态筛选
+- 点击进入工单详情
+
+### /portal/tickets/[id] - 工单详情（报单人视角）
+- 工单详情展示
+- 评论列表（仅公开评论）
+- 添加回复功能
+
+### /agent/queue - 坐席工单队列
+- 待处理工单列表
+- 搜索和状态筛选
+- 接单功能
+- 查看工单详情
+
+### /agent/tickets/[id] - 工单详情（坐席视角）
+- 工单详情展示
+- 状态流转操作（accept、start、resolve等）
+- 评论列表（公开+内部备注标签页）
+- 添加评论（支持公开/内部可见性）
+- 报单人信息侧边栏
+
+## 测试定位点
+
+测试定位点常量定义在 `src/lib/test-ids.ts`，用于E2E测试选择元素：
+- `PORTAL_TEST_IDS` - Portal页面
+- `MY_TICKETS_TEST_IDS` - 我的工单列表页
+- `PORTAL_TICKET_DETAIL_TEST_IDS` - Portal工单详情页
+- `AGENT_QUEUE_TEST_IDS` - Agent队列页
+- `AGENT_TICKET_DETAIL_TEST_IDS` - Agent工单详情页
+
+## Mock模式
+
+设置环境变量启用Mock模式：
+```bash
+NEXT_PUBLIC_MOCK_MODE=true npm run dev
+```
+
+或运行E2E测试：
+```bash
+npm run e2e:mock
+```
+
+## 运行测试
 
 ```bash
-# 1. 安装依赖
-npm install
+# 开发模式
+npm run dev
 
-# 2. 安装 Playwright 浏览器
-npx playwright install
-
-# 3. 配置测试环境
-cp e2e/.env.e2e.example e2e/.env.e2e
-# 编辑 .env.e2e 填入实际值
-
-# 4. 运行测试
-npm run e2e          # 运行所有测试
-npm run e2e:ui       # UI 模式调试
-npm run e2e:mock     # Mock 模式运行
-```
-
-## 目录结构
-
-```
-e2e/
-├── playwright.config.ts    # Playwright 配置
-├── .env.e2e.example       # 环境变量模板
-├── global-setup.ts        # 全局初始化
-├── fixtures/              # 测试夹具
-│   ├── auth.fixture.ts    # 认证 fixture
-│   └── test-data.ts       # 测试数据
-├── helpers/               # 测试工具
-│   └── api-mock.ts        # API Mock 助手
-└── tests/                 # 测试用例
-    └── example.spec.ts    # 示例/主干用例
-```
-
-## 运行模式
-
-### Mock 模式（默认）
-
-不依赖真实 Gateway，使用模拟数据：
-
-```bash
-E2E_MODE=mock npm run e2e
-```
-
-### 真实 Gateway 模式
-
-连接真实 Gateway 进行测试：
-
-```bash
-# 编辑 .env.e2e
-E2E_MODE=real
-E2E_GATEWAY_URL=http://your-gateway:8080
-
-# 运行测试
+# 运行E2E测试
 npm run e2e
+
+# Mock模式E2E测试
+npm run e2e:mock
 ```
-
-## 测试账号
-
-测试账号通过环境变量配置：
-
-| 角色 | 变量 | 默认值 |
-|------|------|--------|
-| 报单人 | E2E_PORTAL_USER | zhangsan |
-| 坐席 | E2E_AGENT_USER | lisi |
-| 管理员 | E2E_ADMIN_USER | admin |
-
-## 编写测试
-
-### 基础结构
-
-```typescript
-import { test, expect } from '../fixtures/auth.fixture';
-import { createApiMock } from '../helpers/api-mock';
-
-test('测试描述', async ({ page, auth, isMockMode }) => {
-  // 启用 Mock（如需要）
-  const apiMock = createApiMock(page);
-  await apiMock.enableMock();
-  
-  // 登录
-  await auth.login('portal'); // 或 'agent', 'admin'
-  
-  // 测试步骤
-  await page.goto('/portal');
-  
-  // 断言
-  await expect(page).toHaveTitle(/Portal/);
-});
-```
-
-### Mock API
-
-```typescript
-// 设置 Mock 响应
-apiMock.mockTicketCreate({
-  id: 'ticket-001',
-  title: '测试工单',
-  // ...
-});
-
-apiMock.mockTicketList([ticket1, ticket2]);
-apiMock.mockCommentCreate(commentData);
-apiMock.mockStatusTransition('ticket-001', 'in_progress');
-```
-
-## CI/CD
-
-GitHub Actions 配置在 `.github/workflows/e2e.yml`：
-
-- 每次 push/PR 自动运行
-- 生成 HTML 测试报告
-- 失败时自动上传截图
-
-## 依赖
-
-- 父任务: [SUP-493](https://github.com/allenlilisec/smart-desk/issues/493)
-- Gateway BFF: [SUP-492](https://github.com/allenlilisec/smart-desk/issues/492)
-
-## 升级路由
-
-- 契约未就绪 → [@江颜](mention://agent/363b4a3f-bb38-41ac-b4ed-6c9bc9af30c5)
