@@ -51,7 +51,7 @@ export const test = base.extend<TestFixtures>({
   isMockMode: async ({}, use) => {
     await use(process.env.E2E_MODE === 'mock');
   },
-  
+
   auth: async ({ page, isMockMode }, use) => {
     const auth = {
       /**
@@ -60,7 +60,7 @@ export const test = base.extend<TestFixtures>({
        */
       login: async (role: UserRole) => {
         const user = TEST_USERS[role];
-        
+
         // Mock 模式：直接设置 cookie / localStorage
         if (isMockMode) {
           await page.evaluate((userData) => {
@@ -68,7 +68,7 @@ export const test = base.extend<TestFixtures>({
           }, user);
           return;
         }
-        
+
         // 真实模式：走登录流程
         // TODO: 根据实际登录页面实现
         await page.goto('/login');
@@ -77,7 +77,7 @@ export const test = base.extend<TestFixtures>({
         await page.click('button[type="submit"]');
         await page.waitForURL(/\/(portal|agent|admin)/);
       },
-      
+
       /**
        * 登出
        */
@@ -91,13 +91,13 @@ export const test = base.extend<TestFixtures>({
           await page.goto('/logout');
         }
       },
-      
+
       /**
        * 获取测试用户信息
        */
       getUser: (role: UserRole) => TEST_USERS[role],
     };
-    
+
     await use(auth);
   },
 });

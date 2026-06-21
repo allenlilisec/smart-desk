@@ -30,7 +30,7 @@ export class ApiMockHelper {
 
     // 拦截所有 Gateway API 请求
     await this.page.route('**/api/**', this.handleMockRoute.bind(this));
-    
+
     // 拦截 Next.js API 路由
     await this.page.route('/api/**', this.handleMockRoute.bind(this));
   }
@@ -70,7 +70,7 @@ export class ApiMockHelper {
 
     // 使用默认 Mock 响应
     const mockResponse = this.getMockResponse(key, pathname, method, request);
-    
+
     if (mockResponse) {
       await route.fulfill({
         status: 200,
@@ -126,7 +126,7 @@ export class ApiMockHelper {
   private matchDynamicPath(pattern: string, actual: string): boolean {
     const patternParts = pattern.split(' ');
     const actualParts = actual.split(' ');
-    
+
     if (patternParts.length !== actualParts.length) return false;
     if (patternParts[0] !== actualParts[0]) return false;
 
