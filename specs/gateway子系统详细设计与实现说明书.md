@@ -269,11 +269,13 @@ refresh token 额外携带 `jti`（一次性刷新后可轮换）。
 | 角色 | 查询参数注入 |
 |---|---|
 | requester | `requester_id = sub`（强制，忽略客户端传入） |
-| agent | `assignee_id = sub` 或 `assignee_id IS NULL` 或组内（lead 管本组） |
+| agent | `assignee_id = sub` 或 `(group_id = user.group AND assignee_id IS NULL)`（**MVP阶段若user.group不可用，允许降级为全组可见，需记TODO**） |
 | lead | `group_id = user.group` 或 `assignee_id IS NULL`（未分派工单） |
 | manager / admin | 无额外限制（manager 只读） |
 
 > **Bug B 修复**：全量工作台必须可见未分派工单（梁栋裁决，2026-06-21）。agent/lead 可见组内未分派工单。
+> 
+> **边界约束（梁栋检视意见）**：`assignee_id IS NULL` 条件必须叠加 `group_id = user.group` 约束，防止 RBAC 越权（避免 agent 看到其他组的未分派工单）。gateway T011 实现时必须校验此条，验收标准包含 group-scope 验证。
 
 ### 4.5 路由分组摘要
 
