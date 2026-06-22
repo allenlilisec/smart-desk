@@ -1,19 +1,22 @@
-import type { Metadata } from 'next';
-import './globals.css';
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
+
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'SmartDesk',
-  description: 'SmartDesk 智能工单平台',
+  title: "SmartDesk - 智能客服平台",
+  description: "SmartDesk 智能客服平台前端",
 };
 
 export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <html lang="zh-CN">
-      <body className="min-h-screen">{children}</body>
+      <body className={inter.className}>{children}</body>
     </html>
   );
 }

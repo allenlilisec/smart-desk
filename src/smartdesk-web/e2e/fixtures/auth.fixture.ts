@@ -1,253 +1,134 @@
+import { test as base, expect } from '@playwright/test';
+
 /**
- * 认证 Fixture
- * 
- * 提供测试用例的登录状态管理，支持 Mock 模式和真实 Gateway 模式。
- * 使用 Playwright 的 fixture 机制，实现依赖注入。
- * 
- * @see https://playwright.dev/docs/test-fixtures
+ * 测试账号类型
  */
+export type UserRole = 'portal' | 'agent' | 'admin';
 
-import { test as base, Page, expect, APIRequestContext } from '@playwright/test';
-import { TestUser, TokenPair, Me, Ticket } from './types';
-import { TEST_USERS, MOCK_RESPONSES, generateTestId } from './test-data';
+export interface TestUser {
+  username: string;
+  password: string;
+  role: UserRole;
+}
 
-// ═══════════════════════════════════════════════════════════
-// Fixture 类型定义
-// ═══════════════════════════════════════════════════════════
-
-type AuthFixture = {
-  /** 已登录的页面实例 */
-  authenticatedPage: Page;
-  
-  /** 报单人页面（zhangsan） */
-  requesterPage: Page;
-  
-  /** 坐席页面（lisi） */
-  agentPage: Page;
-  
-  /** 管理员页面 */
-  adminPage: Page;
-  
-  /** 登录工具函数 */
-  loginAs: (page: Page, userKey: keyof typeof TEST_USERS) => Promise<{ token: string; user: Me }>;
-  
-  /** 获取认证信息 */
-  getAuthInfo: (user: keyof typeof TEST_USERS) => Promise<{ token: string; user: Me }>;
-  
-  /** API 请求上下文（已认证） */
-  authenticatedApi: APIRequestContext;
+/**
+ * 从环境变量读取测试账号
+ */
+export const TEST_USERS: Record<UserRole, TestUser> = {
+  portal: {
+    username: process.env.E2E_PORTAL_USER || 'zhangsan',
+    password: process.env.E2E_PORTAL_PASSWORD || 'password123',
+    role: 'portal',
+  },
+  agent: {
+    username: process.env.E2E_AGENT_USER || 'lisi',
+    password: process.env.E2E_AGENT_PASSWORD || 'password123',
+    role: 'agent',
+  },
+  admin: {
+    username: process.env.E2E_ADMIN_USER || 'admin',
+    password: process.env.E2E_ADMIN_PASSWORD || 'password123',
+    role: 'admin',
+  },
 };
 
-// ═══════════════════════════════════════════════════════════
-// 全局存储（用于跨测试保持登录状态）
-// ═══════════════════════════════════════════════════════════
-
-const authStorage = new Map<string, { token: string; user: Me }>();
-
-// ═══════════════════════════════════════════════════════════
-// 登录实现
-// ═══════════════════════════════════════════════════════════
+const USER_DISPLAY_NAMES: Record<UserRole, string> = {
+  portal: '张三',
+  agent: '李四',
+  admin: '管理员',
+};
 
 /**
- * Mock 模式登录 - 使用 localStorage 注入 token
- *
- * 先导航到应用页面再操作 localStorage，避免 about:blank 的 SecurityError。
+ * 生成 Mock JWT Token
  */
-async function mockLogin(page: Page, userKey: keyof typeof TEST_USERS): Promise<{ token: string; user: Me }> {
-  const user = TEST_USERS[userKey];
-  const tokenData = MOCK_RESPONSES.loginSuccess(user);
-  const userInfo = MOCK_RESPONSES.meResponse(user);
-
-  // 必须先离开 about:blank 才能访问 localStorage
-  await page.goto('/');
-
-  // 注入 token 到 localStorage
-  await page.evaluate(({ token, user }) => {
-    localStorage.setItem('sd_access_token', token);
-    localStorage.setItem('sd_user', JSON.stringify(user));
-    localStorage.setItem('sd_token_expires', (Date.now() + 3600000).toString());
-  }, { token: tokenData.access_token, user: userInfo });
-
-  return { token: tokenData.access_token, user: userInfo };
+function generateMockToken(user: TestUser): string {
+  const payload = {
+    sub: user.username,
+    roles: [user.role],
+    exp: Date.now() + 3600 * 1000,
+  };
+  return `mock_jwt_${Buffer.from(JSON.stringify(payload)).toString('base64')}`;
 }
 
 /**
- * 真实 Gateway 模式登录 - 调用实际登录 API
+ * 扩展的 test 类型，包含登录状态 fixture
  */
-async function realLogin(page: Page, userKey: keyof typeof TEST_USERS): Promise<{ token: string; user: Me }> {
-  const user = TEST_USERS[userKey];
-  
-  // 导航到登录页
-  await page.goto('/login');
-  
-  // 填写登录表单
-  await page.fill('[data-testid="login-username"]', user.username);
-  await page.fill('[data-testid="login-password"]', user.password);
-  
-  // 点击登录按钮
-  await page.click('[data-testid="login-submit"]');
-  
-  // 等待登录成功（重定向到首页或 portal）
-  await page.waitForURL(/\/(portal|agent|admin)?$/, { timeout: 10000 });
-  
-  // 从 localStorage 获取 token
-  const token = await page.evaluate(() => localStorage.getItem('sd_access_token'));
-  const userInfoStr = await page.evaluate(() => localStorage.getItem('sd_user'));
-  
-  if (!token || !userInfoStr) {
-    throw new Error(`Login failed for user: ${user.username}`);
-  }
-  
-  return { token, user: JSON.parse(userInfoStr) };
-}
+export type TestFixtures = {
+  auth: {
+    login: (role: UserRole) => Promise<void>;
+    logout: () => Promise<void>;
+    getUser: (role: UserRole) => TestUser;
+  };
+  isMockMode: boolean;
+};
 
 /**
- * 统一的登录入口
+ * 扩展 test，添加认证 fixture
  */
-async function performLogin(
-  page: Page, 
-  userKey: keyof typeof TEST_USERS
-): Promise<{ token: string; user: Me }> {
-  const isMockMode = process.env.E2E_MODE !== 'real';
-  
-  if (isMockMode) {
-    return mockLogin(page, userKey);
-  } else {
-    return realLogin(page, userKey);
-  }
-}
+// 默认 Mock 模式，与 playwright.config.ts / api-mock.ts / global-setup.ts 保持一致
+const isMockMode = (process.env.E2E_MODE || 'mock') === 'mock';
 
-// ═══════════════════════════════════════════════════════════
-// Playwright Fixture 扩展
-// ═══════════════════════════════════════════════════════════
+export const test = base.extend<TestFixtures>({
+  isMockMode: async ({}, use) => {
+    await use(isMockMode);
+  },
 
-export const test = base.extend<AuthFixture>({
-  /**
-   * 通用认证页面 - 以 zhangsan 登录
-   */
-  authenticatedPage: async ({ browser }, use) => {
-    const context = await browser.newContext({
-      viewport: { width: 1280, height: 720 },
-    });
-    const page = await context.newPage();
-    
-    await performLogin(page, 'zhangsan');
-    await page.goto('/portal');
-    
-    await use(page);
-    
-    await context.close();
-  },
-  
-  /**
-   * 报单人页面 - zhangsan
-   */
-  requesterPage: async ({ browser }, use) => {
-    const context = await browser.newContext({
-      viewport: { width: 1280, height: 720 },
-    });
-    const page = await context.newPage();
-    
-    await performLogin(page, 'zhangsan');
-    await page.goto('/portal');
-    
-    await use(page);
-    
-    await context.close();
-  },
-  
-  /**
-   * 坐席页面 - lisi
-   */
-  agentPage: async ({ browser }, use) => {
-    const context = await browser.newContext({
-      viewport: { width: 1280, height: 720 },
-    });
-    const page = await context.newPage();
-    
-    await performLogin(page, 'lisi');
-    await page.goto('/agent');
-    
-    await use(page);
-    
-    await context.close();
-  },
-  
-  /**
-   * 管理员页面
-   */
-  adminPage: async ({ browser }, use) => {
-    const context = await browser.newContext({
-      viewport: { width: 1280, height: 720 },
-    });
-    const page = await context.newPage();
-    
-    await performLogin(page, 'admin');
-    await page.goto('/admin');
-    
-    await use(page);
-    
-    await context.close();
-  },
-  
-  /**
-   * 登录工具函数
-   */
-  loginAs: async ({}, use) => {
-    await use(async (page: Page, userKey: keyof typeof TEST_USERS): Promise<{ token: string; user: Me }> => {
-      return performLogin(page, userKey);
-    });
-  },
-  
-  /**
-   * 获取认证信息（不创建页面）
-   */
-  getAuthInfo: async ({}, use) => {
-    await use(async (userKey: keyof typeof TEST_USERS) => {
-      const cached = authStorage.get(userKey);
-      if (cached) {
-        return cached;
-      }
-      
-      const user = TEST_USERS[userKey];
-      const tokenData = MOCK_RESPONSES.loginSuccess(user);
-      const userInfo = MOCK_RESPONSES.meResponse(user);
-      
-      const authInfo = { token: tokenData.access_token, user: userInfo };
-      authStorage.set(userKey, authInfo);
-      
-      return authInfo;
-    });
-  },
-  
-  /**
-   * 已认证的 API 请求上下文
-   */
-  authenticatedApi: async ({ playwright }, use) => {
-    const baseURL = process.env.E2E_BASE_URL || 'http://localhost:3000';
-    const authInfo = authStorage.get('zhangsan') || { token: 'mock-token' };
-    
-    const apiContext = await playwright.request.newContext({
-      baseURL,
-      extraHTTPHeaders: {
-        'Authorization': `Bearer ${authInfo.token}`,
+  auth: async ({ page, isMockMode }, use) => {
+    const auth = {
+      /**
+       * 登录指定角色
+       */
+      login: async (role: UserRole) => {
+        const user = TEST_USERS[role];
+        const displayName = USER_DISPLAY_NAMES[role];
+
+        // Mock 模式：直接设置 localStorage
+        if (isMockMode) {
+          // 先导航到应用 origin，否则 about:blank 无法访问 localStorage
+          await page.goto('/');
+          const token = generateMockToken(user);
+          await page.evaluate(
+            ({ token, role, displayName }) => {
+              localStorage.setItem('auth_token', token);
+              localStorage.setItem('user_role', role);
+              localStorage.setItem('user_name', displayName);
+            },
+            { token, role: user.role, displayName }
+          );
+          return;
+        }
+
+        // 真实模式：走登录流程
+        await page.goto('/login');
+        await page.fill('[name="username"]', user.username);
+        await page.fill('[name="password"]', user.password);
+        await page.click('button[type="submit"]');
+        await page.waitForURL(/\/(portal|agent|admin)/);
       },
-    });
-    
-    await use(apiContext);
-    
-    await apiContext.dispose();
+
+      /**
+       * 登出
+       */
+      logout: async () => {
+        if (isMockMode) {
+          // 先导航到应用 origin，否则 about:blank 无法访问 localStorage
+          await page.goto('/');
+          await page.evaluate(() => {
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('user_role');
+            localStorage.removeItem('user_name');
+          });
+        }
+      },
+
+      /**
+       * 获取测试用户信息
+       */
+      getUser: (role: UserRole) => TEST_USERS[role],
+    };
+
+    await use(auth);
   },
 });
 
-// ═══════════════════════════════════════════════════════════
-// 导出 expect
-// ═══════════════════════════════════════════════════════════
-
 export { expect };
-
-// ═══════════════════════════════════════════════════════════
-// 辅助函数导出
-// ═══════════════════════════════════════════════════════════
-
-export { TEST_USERS, MOCK_RESPONSES, generateTestId };

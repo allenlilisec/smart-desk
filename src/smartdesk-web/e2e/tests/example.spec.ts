@@ -1,123 +1,95 @@
+import { test, expect } from '../fixtures/auth.fixture';
+import { createApiMock } from '../helpers/api-mock';
+import { SAMPLE_TICKET_ZHANGSAN, generateTicketData } from '../fixtures/test-data';
+
 /**
- * 示例/主干用例骨架
- * 
- * 本文件用于验证 Playwright 配置是否正确运行。
- * 包含基本的页面加载测试。
- * 
- * @see SUP-493
+ * 示例 E2E 测试用例
+ *
+ * 演示如何使用 fixtures 和 helpers
+ *
+ * TODO: 根据实际页面实现更新选择器
  */
 
-import { test, expect } from '@playwright/test';
+test.describe('示例测试', () => {
+  let apiMock: ReturnType<typeof createApiMock>;
 
-// ═══════════════════════════════════════════════════════════
-// 基础测试套件
-// ═══════════════════════════════════════════════════════════
+  test.beforeEach(async ({ page }) => {
+    apiMock = createApiMock(page);
+    await apiMock.enableMock();
+  });
 
-test.describe('示例测试 - 验证 Playwright 配置', () => {
-  
-  // ═══════════════════════════════════════════════════════
-  // 用例 1：首页可访问
-  // ═══════════════════════════════════════════════════════
-  
-  test('首页可访问并加载', async ({ page }) => {
-    // 访问首页
+  test('页面可正常加载', async ({ page }) => {
     await page.goto('/');
-    
-    // 等待页面加载完成
-    await page.waitForLoadState('networkidle');
-    
-    // 验证页面标题存在
-    const title = await page.title();
-    console.log('页面标题:', title);
-    
-    // 验证页面有内容
-    const body = await page.locator('body').textContent();
-    expect(body).toBeTruthy();
+    await expect(page).toHaveTitle(/SmartDesk/);
   });
-  
-  // ═══════════════════════════════════════════════════════
-  // 用例 2：截图功能
-  // ═══════════════════════════════════════════════════════
-  
-  test('截图功能正常', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    
-    // 截图并验证文件生成
-    const screenshot = await page.screenshot({ fullPage: true });
-    expect(screenshot).toBeTruthy();
-    expect(screenshot.length).toBeGreaterThan(0);
-  });
-  
-  // ═══════════════════════════════════════════════════════
-  // 用例 3：元素选择器
-  // ═══════════════════════════════════════════════════════
-  
-  test('元素选择器工作正常', async ({ page }) => {
-    await page.goto('/');
-    
-    // 验证 body 元素存在
-    const body = page.locator('body');
-    await expect(body).toBeVisible();
-    
-    // 验证 html 标签存在
-    const html = page.locator('html');
-    await expect(html).toBeVisible();
-  });
-  
-  // ═══════════════════════════════════════════════════════
-  // 用例 4：浏览器导航
-  // ═══════════════════════════════════════════════════════
-  
-  test('浏览器导航功能正常', async ({ page }) => {
-    // 访问首页
-    await page.goto('/');
-    const homeUrl = page.url();
-    
-    // 验证 URL 格式
-    expect(homeUrl).toContain('localhost');
-    
-    // 验证可以前进后退（如果有历史）
-    await page.goto('/portal');
-    const portalUrl = page.url();
-    expect(portalUrl).not.toBe(homeUrl);
-  });
-  
-  // ═══════════════════════════════════════════════════════
-  // 用例 5：响应式视口
-  // ═══════════════════════════════════════════════════════
-  
-  test('响应式视口功能正常', async ({ page }) => {
-    // 设置桌面视口
-    await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto('/');
-    await expect(page.locator('body')).toBeVisible();
-    
-    // 设置移动视口
-    await page.setViewportSize({ width: 375, height: 667 });
-    await page.reload();
-    await expect(page.locator('body')).toBeVisible();
+
+  test('Mock API 可正常工作', async ({ page, auth, isMockMode }) => {
+    // 仅在 Mock 模式下运行
+    test.skip(!isMockMode, '仅 Mock 模式');
+
+    // 设置 Mock 响应
+    const mockTicket = generateTicketData();
+    apiMock.mockTicketCreate(mockTicket);
+
+    // Mock 登录
+    await auth.login('portal');
+
+    // 访问页面（实际页面实现后更新）
+    // await page.goto('/portal');
+    // await page.click('button:has-text("新建工单")');
   });
 });
 
-// ═══════════════════════════════════════════════════════════
-// Mock/真实模式测试
-// ═══════════════════════════════════════════════════════════
-
-test.describe('模式检测', () => {
-  
-  test('检测当前运行模式', async () => {
-    const mode = process.env.E2E_MODE || 'mock';
-    console.log(`当前运行模式: ${mode}`);
-    
-    expect(['mock', 'real']).toContain(mode);
+test.describe('张三提单流程', () => {
+  test.beforeEach(async ({ page }) => {
+    const apiMock = createApiMock(page);
+    await apiMock.enableMock();
   });
-  
-  test('检测基础 URL', async () => {
-    const baseURL = process.env.E2E_BASE_URL || 'http://localhost:3000';
-    console.log(`基础 URL: ${baseURL}`);
-    
-    expect(baseURL).toBeTruthy();
-    expect(baseURL.startsWith('http')).toBeTruthy();
+
+  test('报单人可登录', async ({ page, auth }) => {
+    await auth.login('portal');
+    // TODO: 验证登录成功后的页面状态
+  });
+
+  test('报单人可创建工单', async ({ page, auth, isMockMode }) => {
+    test.skip(!isMockMode, '仅 Mock 模式');
+
+    const apiMock = createApiMock(page);
+    const mockTicket = generateTicketData(SAMPLE_TICKET_ZHANGSAN);
+    apiMock.mockTicketCreate(mockTicket);
+
+    await auth.login('portal');
+
+    // TODO: 实现完整的提单流程测试
+    // 1. 访问 /portal
+    // 2. 点击「新建工单」
+    // 3. 填写表单
+    // 4. 提交
+    // 5. 验证结果
+  });
+});
+
+test.describe('李四队列与评论', () => {
+  test.beforeEach(async ({ page }) => {
+    const apiMock = createApiMock(page);
+    await apiMock.enableMock();
+  });
+
+  test('坐席可登录', async ({ page, auth }) => {
+    await auth.login('agent');
+    // TODO: 验证登录成功后的页面状态
+  });
+
+  test('坐席可查看工单队列', async ({ page, auth, isMockMode }) => {
+    test.skip(!isMockMode, '仅 Mock 模式');
+
+    const apiMock = createApiMock(page);
+    apiMock.mockTicketList([SAMPLE_TICKET_ZHANGSAN]);
+
+    await auth.login('agent');
+
+    // TODO: 实现队列查看测试
+    // 1. 访问 /agent
+    // 2. 验证工单列表
   });
 });

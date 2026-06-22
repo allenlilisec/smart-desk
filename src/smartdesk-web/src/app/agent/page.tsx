@@ -1,10 +1,10 @@
-import type { Metadata } from 'next';
-import AgentQueue from './agent-queue';
+/**
+ * /agent 坐席工作台首页
+ * 跳转到工单队列
+ */
 
-export const metadata: Metadata = {
-  title: '坐席工作台 - SmartDesk',
-};
+import { redirect } from 'next/navigation';
 
-export default function AgentQueuePage() {
-  return <AgentQueue />;
+export default function AgentPage() {
+  redirect('/agent/queue');
 }
