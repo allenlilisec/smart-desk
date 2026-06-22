@@ -67,7 +67,7 @@ export default function TicketList() {
 
       const data = await response.json()
       setTickets(data.data.items || [])
-    } catch (err) {
+    } catch {
       setError('加载工单列表失败')
     } finally {
       setIsLoading(false)

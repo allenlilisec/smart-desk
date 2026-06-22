@@ -36,7 +36,7 @@ export default function PortalLogin() {
 
       // 跳转到门户首页
       router.push('/portal')
-    } catch (err) {
+    } catch {
       setError('用户名或密码错误')
     } finally {
       setIsLoading(false)
