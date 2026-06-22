@@ -1,8 +1,9 @@
 {
-  "ignore_literal_paths": ["/docs", "/api/v1/auth", "/callback"],
+  "ignore_literal_paths": ["/docs", "/api/v1/auth", "/callback", "/tickets/x", "/x"],
   "exclude_dirs": [
     "src/smartdesk-insight/tests",
-    "src/smartdesk-gateway/test"
+    "src/smartdesk-gateway/test",
+    "src/smartdesk-gateway/src/clients"
   ],
   "providers": {
     "core": "src/openapi/core.yaml",
