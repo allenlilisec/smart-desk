@@ -4,9 +4,30 @@
 
 ## 技术栈
 
+<<<<<<< HEAD
+```bash
+# 1. 安装依赖
+npm install
+
+# 2. 安装 Playwright 浏览器
+npx playwright install
+
+# 3. 配置测试环境
+cp e2e/.env.e2e.example e2e/.env.e2e
+# 编辑 .env.e2e 填入实际值
+
+# 4. 运行测试
+npm run e2e          # 运行所有测试（默认 Gateway 模式）
+npm run e2e:ui       # UI 模式调试
+npm run e2e:mock     # Mock 模式运行
+npm run e2e:gateway  # 真实 Gateway 模式运行
+npm run e2e:gateway:local  # 连接本地 http://localhost:8080 Gateway
+```
+=======
 - **测试框架**: Playwright
 - **语言**: TypeScript
 - **浏览器**: Chromium, Firefox, WebKit
+>>>>>>> origin/main
 
 ## 目录结构
 
@@ -35,11 +56,15 @@ e2e/
 使用 Playwright 的 route API 拦截并模拟 API 响应，无需后端服务。
 
 ```bash
+<<<<<<< HEAD
+npm run e2e:mock
+=======
 # Mock 模式（默认）
 npx playwright test
 
 # 或显式指定
 E2E_MODE=mock npx playwright test
+>>>>>>> origin/main
 ```
 
 ### 真实 Gateway 模式
@@ -47,6 +72,13 @@ E2E_MODE=mock npx playwright test
 调用真实的 Gateway 服务进行测试。
 
 ```bash
+<<<<<<< HEAD
+# 方式 1：直接指定 Gateway 地址
+npm run e2e:gateway -- --env E2E_GATEWAY_URL=http://your-gateway:8080
+
+# 方式 2：连接本地 Gateway
+npm run e2e:gateway:local
+=======
 # 真实 Gateway 模式
 E2E_MODE=real E2E_BASE_URL=http://localhost:3001 npx playwright test
 ```
@@ -65,7 +97,10 @@ npm run e2e:ui
 
 # 特定浏览器
 npx playwright test --project=chromium
+>>>>>>> origin/main
 ```
+
+真实 Gateway 模式下，`playwright.config.ts` 会自动启动 Next.js 开发服务器，API 请求通过 `next.config.js` 的 rewrites 代理到 `E2E_GATEWAY_URL`。请确保 Gateway 服务已就绪。
 
 ## 测试账号
 
