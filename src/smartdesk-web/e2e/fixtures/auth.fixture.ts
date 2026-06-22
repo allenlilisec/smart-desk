@@ -32,6 +32,24 @@ export const TEST_USERS: Record<UserRole, TestUser> = {
   },
 };
 
+const USER_DISPLAY_NAMES: Record<UserRole, string> = {
+  portal: '张三',
+  agent: '李四',
+  admin: '管理员',
+};
+
+/**
+ * 生成 Mock JWT Token
+ */
+function generateMockToken(user: TestUser): string {
+  const payload = {
+    sub: user.username,
+    roles: [user.role],
+    exp: Date.now() + 3600 * 1000,
+  };
+  return `mock_jwt_${Buffer.from(JSON.stringify(payload)).toString('base64')}`;
+}
+
 /**
  * 扩展的 test 类型，包含登录状态 fixture
  */
@@ -59,23 +77,28 @@ export const test = base.extend<TestFixtures>({
     const auth = {
       /**
        * 登录指定角色
-       * TODO: 根据实际登录流程实现
        */
       login: async (role: UserRole) => {
         const user = TEST_USERS[role];
+        const displayName = USER_DISPLAY_NAMES[role];
 
-        // Mock 模式：直接设置 cookie / localStorage
+        // Mock 模式：直接设置 localStorage
         if (isMockMode) {
           // 先导航到应用 origin，否则 about:blank 无法访问 localStorage
           await page.goto('/');
-          await page.evaluate((userData) => {
-            localStorage.setItem('e2e_auth_user', JSON.stringify(userData));
-          }, user);
+          const token = generateMockToken(user);
+          await page.evaluate(
+            ({ token, role, displayName }) => {
+              localStorage.setItem('auth_token', token);
+              localStorage.setItem('user_role', role);
+              localStorage.setItem('user_name', displayName);
+            },
+            { token, role: user.role, displayName }
+          );
           return;
         }
 
         // 真实模式：走登录流程
-        // TODO: 根据实际登录页面实现
         await page.goto('/login');
         await page.fill('[name="username"]', user.username);
         await page.fill('[name="password"]', user.password);
@@ -91,11 +114,10 @@ export const test = base.extend<TestFixtures>({
           // 先导航到应用 origin，否则 about:blank 无法访问 localStorage
           await page.goto('/');
           await page.evaluate(() => {
-            localStorage.removeItem('e2e_auth_user');
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('user_role');
+            localStorage.removeItem('user_name');
           });
-        } else {
-          // TODO: 根据实际登出流程实现
-          await page.goto('/logout');
         }
       },
 

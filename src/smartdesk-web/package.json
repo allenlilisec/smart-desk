@@ -18,6 +18,8 @@
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",
     "e2e:mock": "cross-env E2E_MODE=mock playwright test",
+    "e2e:gateway": "cross-env E2E_MODE=gateway playwright test",
+    "e2e:gateway:local": "cross-env E2E_MODE=gateway E2E_GATEWAY_URL=http://localhost:8080 playwright test",
     "e2e:debug": "playwright test --debug"
   },
   "dependencies": {

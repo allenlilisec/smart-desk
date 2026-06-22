@@ -94,7 +94,7 @@ export class ApiMockHelper {
     const regex = new RegExp(
       '^' + pattern
         .replace(/\//g, '\\/')
-        .replace(/:\w+/g, '\\w+')
+        .replace(/:\w+/g, '[^/]+')
         .replace(/\*/g, '.*') + '$'
     );
     return regex.test(pathname);
@@ -210,6 +210,58 @@ export class ApiMockHelper {
         contentType: 'application/json',
         body: JSON.stringify({ status: newStatus, updatedAt: new Date().toISOString() }),
       });
+    });
+  }
+
+  /**
+   * Mock 工单创建（/api/v1/tickets）
+   */
+  mockTicketCreateV1(ticketData: TicketData): void {
+    this.addHandler('/api/v1/tickets', (route, request) => {
+      if (request.method() === 'POST') {
+        route.fulfill({
+          status: 201,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, data: ticketData }),
+        });
+      } else {
+        route.continue();
+      }
+    });
+  }
+
+  /**
+   * Mock 工单列表（/api/v1/tickets）
+   */
+  mockTicketListV1(tickets: TicketData[]): void {
+    this.addHandler('/api/v1/tickets', (route, request) => {
+      if (request.method() === 'GET') {
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, data: { items: tickets, total: tickets.length } }),
+        });
+      } else {
+        route.continue();
+      }
+    });
+  }
+
+  /**
+   * Mock 工单详情（/api/v1/tickets/:id）
+   */
+  mockTicketDetailV1(ticketData: TicketData): void {
+    const pattern = '/api/v1/tickets/:id';
+    this.addHandler(pattern, (route, request) => {
+      if (request.method() === 'GET') {
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, data: ticketData }),
+        });
+      } else {
+        route.continue();
+      }
     });
   }
 }
