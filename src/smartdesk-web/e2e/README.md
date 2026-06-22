@@ -1,4 +1,6 @@
-# SmartDesk Web E2E 测试
+# SmartDesk Web E2E 测试套件
+
+基于 Playwright 的端到端测试套件，覆盖「张三提单 → 李四队列 → 评论交互」主链路。
 
 ## 新增页面
 
@@ -30,6 +32,79 @@
 - 添加评论（支持公开/内部可见性）
 - 报单人信息侧边栏
 
+## 技术栈
+
+- **测试框架**: Playwright
+- **语言**: TypeScript
+- **浏览器**: Chromium, Firefox, WebKit
+
+## 目录结构
+
+```
+e2e/
+├── fixtures/
+│   ├── auth.fixture.ts      # 认证 fixture（登录状态管理）
+│   ├── test-data.ts         # 测试数据模板
+│   └── types.ts             # TypeScript 类型定义
+├── helpers/
+│   └── api-mock.ts          # API Mock 助手（Mock 模式）
+├── tests/
+│   ├── portal/              # 报单人门户测试
+│   │   ├── create-ticket.spec.ts   # 提单流程
+│   │   └── my-tickets.spec.ts      # 我的工单列表
+│   ├── agent/               # 坐席工作台测试
+│   └── example.spec.ts      # 示例/主干用例骨架
+├── global-setup.ts          # 全局设置
+└── README.md                # 本文件
+```
+
+## 运行模式
+
+### Mock 模式（默认）
+
+使用 Playwright 的 route API 拦截并模拟 API 响应，无需后端服务。
+
+```bash
+# Mock 模式（默认）
+npx playwright test
+
+# 或显式指定
+E2E_MODE=mock npx playwright test
+```
+
+### 真实 Gateway 模式
+
+调用真实的 Gateway 服务进行测试。
+
+```bash
+# 真实 Gateway 模式
+E2E_MODE=real E2E_BASE_URL=http://localhost:3001 npx playwright test
+```
+
+## 运行测试
+
+```bash
+# 运行所有测试
+npm run e2e
+
+# 运行特定测试文件
+npx playwright test e2e/tests/portal/create-ticket.spec.ts
+
+# UI 模式（调试）
+npm run e2e:ui
+
+# 特定浏览器
+npx playwright test --project=chromium
+```
+
+## 测试账号
+
+| 账号 | 角色 | 用途 |
+|------|------|------|
+| zhangsan | requester | 报单人门户测试 |
+| lisi | agent | 坐席工作台测试 |
+| admin | admin | 管理员后台测试 |
+
 ## 测试定位点
 
 测试定位点常量定义在 `src/lib/test-ids.ts`，用于E2E测试选择元素：
@@ -39,27 +114,33 @@
 - `AGENT_QUEUE_TEST_IDS` - Agent队列页
 - `AGENT_TICKET_DETAIL_TEST_IDS` - Agent工单详情页
 
-## Mock模式
+## Mock 数据
 
-设置环境变量启用Mock模式：
-```bash
-NEXT_PUBLIC_MOCK_MODE=true npm run dev
-```
+Mock 数据定义在 `fixtures/test-data.ts` 中：
 
-或运行E2E测试：
-```bash
-npm run e2e:mock
-```
+- 用户信息（TEST_USERS）
+- 工单模板（TICKET_TEMPLATES）
+- 评论模板（COMMENT_TEMPLATES）
+- API 响应模板（MOCK_RESPONSES）
 
-## 运行测试
+## 环境变量
 
-```bash
-# 开发模式
-npm run dev
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| E2E_MODE | 运行模式（mock/real） | mock |
+| E2E_BASE_URL | 测试站点基础 URL | http://localhost:3000 |
+| E2E_GATEWAY_URL | Gateway 服务 URL（真实模式） | - |
 
-# 运行E2E测试
-npm run e2e
+## 验收标准
 
-# Mock模式E2E测试
-npm run e2e:mock
-```
+- ✅ Playwright 配置完成，可运行 `npm run e2e`
+- ✅ 主链路 E2E 用例通过（张三提单 → 李四队列 → 评论交互）
+- ✅ 与真实 Gateway 环境可联调
+- ✅ Mock 模式与真实 Gateway 模式可切换
+
+## 相关 Issue
+
+- [SUP-493](mention://issue/6ad99b94-3d05-460a-8cb5-4577eaa841be) - Playwright E2E 测试套件
+- [SUP-497](mention://issue/d8572578-1446-49ca-90f4-c4c33daba0d6) - 报单人提单流程
+- [SUP-498](mention://issue/7cf5594e-a34a-4694-8a24-aeddb5735557) - 坐席队列与评论交互
+- [SUP-510](mention://issue/11d40f06-8997-4610-a61b-38c2cf335356) - 补齐 /portal 与 /agent 被测页面

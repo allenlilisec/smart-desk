@@ -6,6 +6,9 @@ import { MOCK_API_RESPONSES, TicketData, CommentData } from '../fixtures/test-da
  * 用于 Mock 模式下拦截和模拟 API 响应
  */
 
+// 默认 Mock 模式，与 playwright.config.ts / auth.fixture.ts / global-setup.ts 保持一致
+const isMockMode = (process.env.E2E_MODE || 'mock') === 'mock';
+
 export class ApiMockHelper {
   private page: Page;
   private mockEnabled: boolean;
@@ -13,7 +16,7 @@ export class ApiMockHelper {
 
   constructor(page: Page) {
     this.page = page;
-    this.mockEnabled = process.env.E2E_MODE === 'mock';
+    this.mockEnabled = isMockMode;
   }
 
   /**
@@ -30,7 +33,7 @@ export class ApiMockHelper {
 
     // 拦截所有 Gateway API 请求
     await this.page.route('**/api/**', this.handleMockRoute.bind(this));
-    
+
     // 拦截 Next.js API 路由
     await this.page.route('/api/**', this.handleMockRoute.bind(this));
   }
@@ -70,7 +73,7 @@ export class ApiMockHelper {
 
     // 使用默认 Mock 响应
     const mockResponse = this.getMockResponse(key, pathname, method, request);
-    
+
     if (mockResponse) {
       await route.fulfill({
         status: 200,
@@ -126,7 +129,7 @@ export class ApiMockHelper {
   private matchDynamicPath(pattern: string, actual: string): boolean {
     const patternParts = pattern.split(' ');
     const actualParts = actual.split(' ');
-    
+
     if (patternParts.length !== actualParts.length) return false;
     if (patternParts[0] !== actualParts[0]) return false;
 
