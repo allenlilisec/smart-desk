@@ -1,4 +1,6 @@
 
 # E2E results
 e2e/results/
+playwright-report/
+*.tsbuildinfo
 

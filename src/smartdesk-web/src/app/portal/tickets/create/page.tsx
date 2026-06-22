@@ -122,7 +122,7 @@ export default function CreateTicket() {
       setTimeout(() => {
         router.push(`/portal/tickets/${data.data.id}`)
       }, 500)
-    } catch (err) {
+    } catch {
       setErrors({ title: '创建工单失败，请重试' })
     } finally {
       setIsSubmitting(false)

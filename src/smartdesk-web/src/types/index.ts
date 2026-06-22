@@ -5,7 +5,7 @@
 // 从 ticket.ts 导出（工单相关类型）
 export type {
   TicketStatus,
-  Priority as TicketPriority,
+  TicketPriority,
   UserRole,
   CommentVisibility,
   Ticket,
